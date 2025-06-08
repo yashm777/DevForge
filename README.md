@@ -2,11 +2,11 @@
 PROBAL BOSE
 
 # TEAM MEMBERS
-YASH THAKUR
-MARTINS EJIKE
-KSHITIJ SHEKAR
-GOKUL SAJEEVAN
-NISHAL KOSHY PHILIP
+- YASH THAKUR
+- MARTINS EJIKE
+- KSHITIJ SHEKAR
+- GOKUL SAJEEVAN
+- NISHAL KOSHY PHILIP
 # CLI-Based AI Agent for Automated Development Environment Setup
 
 This project is a command-line AI assistant designed to automate the setup of development environments on Linux and macOS systems. It allows users to describe their setup needs using natural language commands, which the AI interprets and executes as system-level operations like package installations, file modifications, or environment configurations.
