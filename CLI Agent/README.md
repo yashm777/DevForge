@@ -41,3 +41,4 @@ This tool works on:
 
 Resources used:
 1. https://medium.com/@shmilysyg/fastmcp-the-fastway-to-build-mcp-servers-aa14f88536d2
+2. https://docs.astral.sh/uv/pip/environments/
