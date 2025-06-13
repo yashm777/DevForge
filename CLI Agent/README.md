@@ -29,6 +29,7 @@ For example, if you want to install Docker, the tool will:
 
 
 ## What We Need
+- UV - run **uv pip sync requirements.txt**
 - fastmcp: The framework that makes our server work
 
 ## Supported Systems
