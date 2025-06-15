@@ -14,11 +14,12 @@ client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
 # Available tools and their schemas
 AVAILABLE_TOOLS = {
-    "install_tool_wrapper": {
-        "description": "Installs or updates a development tool on the system.",
+    "tool_action_wrapper": {
+        "description": "Performs actions like install, update, version check, or uninstall on tools.",
         "params": {
             "tool_name": "Name of the tool (e.g., nodejs, docker)",
-            "version": "Version to install (default is 'latest')"
+            "action": "Action to perform (install, update, version, uninstall)",
+            "version": "Version to install or update to (optional)"
         }
     }
 }
