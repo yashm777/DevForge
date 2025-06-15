@@ -1,4 +1,4 @@
-from tool_installer import handle_request
+from tool_manager import handle_request
 
 # Test installing Docker
 request_1 = {"task": "install_tool", "tool": "docker"}
