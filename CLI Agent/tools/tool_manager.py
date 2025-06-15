@@ -1,12 +1,11 @@
-# tool_installer.py - For installing tools on the host system. This module is used by the main.py module.
+# tool_installer.py - Handles installing, uninstalling, updating, and checking version of tools.
 
 import subprocess
-import platform
 import shutil
-from os_utils import get_os_type, has_command, is_linux, is_mac, is_windows
+from .os_utils import is_linux, is_mac, is_windows
+from .constants import ToolMessages
 
 def run_command(command_list, shell=False):
-    """Run a shell command and return True if successful, False otherwise."""
     try:
         subprocess.run(command_list, check=True, shell=shell)
         return True
@@ -14,58 +13,77 @@ def run_command(command_list, shell=False):
         print(f"Error running command: {e}")
         return False
 
+# INSTALL TOOL
 def install_tool(tool_name, version="latest"):
     if is_linux():
         if shutil.which("apt") is None:
-            print("APT package manager not found. Unsupported Linux distribution.")
-            return False
+            return ToolMessages.UNSUPPORTED_OS
         if tool_name == "docker":
-            return (
+            success = (
                 run_command(["sudo", "apt", "update"]) and
                 run_command(["sudo", "apt", "install", "-y", "docker.io"])
             )
         elif tool_name == "nodejs":
-            return run_command(["sudo", "apt", "install", "-y", "nodejs"])
+            success = run_command(["sudo", "apt", "install", "-y", "nodejs"])
         else:
-            print(f"Tool '{tool_name}' not supported on Linux.")
-            return False
-
+            return f"{tool_name} is not supported on Linux."
+    
     elif is_mac():
         if shutil.which("brew") is None:
-            print("Homebrew not found. Please install Homebrew first.")
-            return False
+            return "Homebrew not found. Please install Homebrew first."
         if tool_name == "docker":
-            return run_command(["brew", "install", "--cask", "docker"])
+            success = run_command(["brew", "install", "--cask", "docker"])
         elif tool_name == "nodejs":
-            return run_command(["brew", "install", "node"])
+            success = run_command(["brew", "install", "node"])
         else:
-            print(f"Tool '{tool_name}' not supported on macOS.")
-            return False
-
+            return f"{tool_name} is not supported on macOS."
+    
     elif is_windows():
         if tool_name == "docker":
-            print("Please install Docker Desktop manually on Windows.")
-            return False
+            return "Please install Docker Desktop manually on Windows."
         elif tool_name == "nodejs":
             if shutil.which("choco") is None:
-                print("Chocolatey not found. Please install Chocolatey first.")
-                return False
-            return run_command(["choco", "install", "-y", "nodejs"], shell=True)
+                return "Chocolatey not found. Please install Chocolatey first."
+            success = run_command(["choco", "install", "-y", "nodejs"], shell=True)
         else:
-            print(f"Tool '{tool_name}' not supported on Windows.")
-            return False
-
+            return f"{tool_name} is not supported on Windows."
+    
     else:
-        print("Unsupported OS.")
-        return False
+        return ToolMessages.UNSUPPORTED_OS
 
+    return (
+        ToolMessages.INSTALL_SUCCESS.format(tool=tool_name)
+        if success else ToolMessages.INSTALL_FAILED.format(tool=tool_name)
+    )
+
+# Placeholder for other tasks
+def uninstall_tool(tool_name):
+    return f"Uninstall logic for {tool_name} not implemented yet."
+
+def update_tool(tool_name):
+    return f"Update logic for {tool_name} not implemented yet."
+
+def tool_version(tool_name):
+    return f"Version check logic for {tool_name} not implemented yet."
+
+# Task Dispatcher
 def handle_request(request):
-    if request["task"] == "install_tool":
-        tool = request.get("tool")
-        if tool:
-            success = install_tool(tool)
-            return {"status": "success" if success else "error", "tool": tool}
-        else:
-            return {"status": "error", "message": "Missing 'tool' in request."}
+    task = request.get("task")
+    tool = request.get("tool")
+
+    if not tool:
+        return {"status": "error", "message": ToolMessages.MISSING_TOOL}
+    
+    if task == "install":
+        result = install_tool(tool)
+    elif task == "uninstall":
+        result = uninstall_tool(tool)
+    elif task == "update":
+        result = update_tool(tool)
+    elif task == "version":
+        result = tool_version(tool)
     else:
-        return {"status": "error", "message": f"Unknown task: {request['task']}"}
+        return {"status": "error", "message": ToolMessages.UNSUPPORTED_TASK.format(task=task)}
+
+    status = "success" if "successfully" in result.lower() else "error"
+    return {"status": status, "message": result}

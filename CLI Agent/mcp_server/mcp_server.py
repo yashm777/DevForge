@@ -1,27 +1,31 @@
-# mcp_server.py
-
 from fastmcp import FastMCP
-from tools.install import install_tool
+from tools.tool_manager import handle_request
 import platform
 
 # Initialize MCP Server
 mcp = FastMCP("DevEnv MCP Server")
 
-# Software Installation / Version Management Tool
+# General tool operation wrapper
 @mcp.tool()
-def install_tool_wrapper(tool_name: str, version: str = "latest") -> str:
+def tool_action_wrapper(task: str, tool_name: str, version: str = "latest") -> dict:
     """
-    Install, update, or check version of a software package.
+    Perform an action (install, uninstall, update, version) on a software package.
     Arguments:
-      tool_name: name of the tool to install (e.g., "docker", "nodejs")
-      version: version string or 'latest' to get the newest version
+      task: operation to perform ('install', 'uninstall', 'update', 'version')
+      tool_name: name of the tool (e.g., "docker", "nodejs")
+      version: version string or 'latest' (only applicable for install/update)
     Returns:
-      Status message about the installation/update/version check
+      Dictionary with status and message
     """
     try:
-        return install_tool(tool_name, version)
+        request = {
+            "task": task,
+            "tool": tool_name,
+            "version": version
+        }
+        return handle_request(request)
     except Exception as e:
-        raise RuntimeError(f"install_tool failed: {e}")
+        return {"status": "error", "message": f"Tool operation failed: {e}"}
 
 # Server info resource
 @mcp.resource("info://server")
@@ -41,6 +45,7 @@ def server_info() -> dict:
     }
 
 if __name__ == "__main__":
-    # Start the MCP server
     print("Starting DevEnv MCP Server...")
     mcp.run(transport="stdio")
+    print("MCP Server is running. Use Ctrl+C to stop.")
+# This code sets up a FastMCP server that provides a tool management interface.
