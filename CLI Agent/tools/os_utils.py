@@ -1,5 +1,6 @@
 import platform
 import shutil
+import logging
 
 def get_os_type():
     """
@@ -33,18 +34,13 @@ def has_command(cmd):
     """
     return shutil.which(cmd) is not None
 
-def get_linux_distribution():
-    """
-    Returns the Linux distribution ID (e.g., 'ubuntu', 'fedora', 'arch') in lowercase.
-    Returns:
-        str or None: distro ID or None if not Linux or detection failed
-    """
-    if not is_linux():
-        return None
+def get_linux_distro():
+    """Returns the Linux distro ID (e.g., ubuntu, debian, arch, fedora, etc)."""
     try:
         with open("/etc/os-release", "r") as f:
             for line in f:
                 if line.startswith("ID="):
                     return line.strip().split("=")[1].strip('"').lower()
-    except Exception:
-        return None
+    except Exception as e:
+        logging.warning(f"Could not read /etc/os-release: {e}")
+    return "unknown"
