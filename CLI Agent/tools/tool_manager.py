@@ -1,6 +1,4 @@
-import platform
 from tools.os_utils import get_os_type
-from tools.constants import SUCCESS_INSTALL, ERROR_INSTALL  # and others as needed
 
 # Map task to folder
 TASK_MODULE_MAP = {

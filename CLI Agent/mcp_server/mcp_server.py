@@ -1,6 +1,7 @@
 from fastmcp import FastMCP
 from tools.tool_manager import handle_request
 import platform
+import argparse
 
 # Initialize MCP Server
 mcp = FastMCP("DevEnv MCP Server")
@@ -35,8 +36,10 @@ def server_info() -> dict:
     """
     return {
         "name": "DevEnv MCP Server",
+        "version": "2.0",
         "tool_count": len(mcp.tools),
-        "description": "MCP server for software installation and version management",
+        "description": "MCP server for software installation and development environment management on Mac and Linux",
+        "transport": "HTTP for OpenAI cloud integration",
         "platform": {
             "system": platform.system(),
             "release": platform.release(),
@@ -44,8 +47,34 @@ def server_info() -> dict:
         }
     }
 
+def main():
+    """Entry point for the CLI command and direct execution"""
+    # Parse command line arguments for HTTP server configuration
+    parser = argparse.ArgumentParser(description="DevEnv MCP Server for OpenAI Cloud Integration")
+    parser.add_argument(
+        "--host", 
+        default="localhost",
+        help="Host to bind HTTP server (default: localhost)"
+    )
+    parser.add_argument(
+        "--port", 
+        type=int, 
+        default=8000,
+        help="Port to bind HTTP server (default: 8000)"
+    )
+    
+    args = parser.parse_args()
+    
+    print("=" * 50)
+    print("DevEnv MCP Server for OpenAI Cloud Integration")
+    print("=" * 50)
+    print(f"Starting HTTP server on {args.host}:{args.port}")
+    print("OpenAI models can now send HTTP requests to this server")
+    
+    # Use streamable-http transport for cloud LLM integration
+    mcp.run(transport="streamable-http", host=args.host, port=args.port, path="/mcp")
+        
+    print("MCP Server stopped.")
+
 if __name__ == "__main__":
-    print("Starting DevEnv MCP Server...")
-    mcp.run(transport="stdio")
-    print("MCP Server is running. Use Ctrl+C to stop.")
-# This code sets up a FastMCP server that provides a tool management interface.
+    main()
