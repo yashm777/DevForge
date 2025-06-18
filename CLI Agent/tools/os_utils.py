@@ -5,14 +5,17 @@ import logging
 def get_os_type():
     """
     Detects the underlying operating system and returns it as a lowercase string.
+    Only supports Mac and Linux.
     Returns:
-        str: "linux", "darwin", or "windows"
+        str: "linux" or "darwin"
     Raises:
-        EnvironmentError: if OS is not supported
+        EnvironmentError: if OS is not supported (Windows or unknown)
     """
     os_type = platform.system().lower()
-    if os_type not in ("linux", "darwin", "windows"):
-        raise EnvironmentError(f"Unsupported operating system: {os_type}")
+    if os_type == "windows":
+        raise EnvironmentError("Windows is not supported. Only Mac and Linux are supported.")
+    elif os_type not in ("linux", "darwin"):
+        raise EnvironmentError(f"Unsupported operating system: {os_type}. Only Mac and Linux are supported.")
     return os_type
 
 def is_linux():
@@ -21,14 +24,11 @@ def is_linux():
 def is_mac():
     return get_os_type() == "darwin"
 
-def is_windows():
-    return get_os_type() == "windows"
-
 def has_command(cmd):
     """
     Checks if a command is available on the system.
     Args:
-        cmd (str): Command name (e.g., 'brew', 'apt', 'choco')
+        cmd (str): Command name (e.g., 'brew', 'apt')
     Returns:
         bool: True if available, False otherwise
     """
