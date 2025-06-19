@@ -1,6 +1,6 @@
 from fastmcp import FastMCP
 from tools.tool_manager import handle_request
-from tools.os_utils import check_and_setup_package_managers
+from mcp_server.system_utils import check_and_setup_package_managers
 import platform
 import argparse
 

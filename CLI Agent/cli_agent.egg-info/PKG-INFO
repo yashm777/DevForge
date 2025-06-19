@@ -1,0 +1,208 @@
+Metadata-Version: 2.4
+Name: cli-agent
+Version: 0.1.0
+Summary: A CLI agent with MCP server for development tool management
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+Requires-Dist: fastmcp>=0.1.0
+
+# CLI Agent - DevEnv MCP Server
+
+A robust Model Context Protocol (MCP) server that helps development teams manage their environment setup and tool installations. Designed for seamless integration with OpenAI and other cloud LLMs via HTTP transport.
+
+## Features
+
+- **HTTP Transport**: Uses streamable-http for cloud LLM integration (not stdio)
+- **Auto Package Manager Setup**: Automatically installs Homebrew on Mac and detects/uses apt/yum/dnf on Linux
+- **Comprehensive System Info**: Provides detailed system information to LLMs before any requests
+- **Tool Management**: Install, update, uninstall, and check development tools
+- **Cross-Platform**: Supports macOS and Linux (Windows removed for team focus)
+- **Team-Friendly**: Isolated MCP server logic that doesn't interfere with teammate implementations
+
+## Quick Start
+
+### Installation
+
+1. **Clone and setup the project:**
+   ```bash
+   git clone <repository-url>
+   cd "CLI Agent"
+   ```
+
+2. **Install dependencies using uv:**
+   ```bash
+   uv pip sync requirements.txt
+   ```
+
+3. **Install the package (optional, for CLI access):**
+   ```bash
+   pip install -e .
+   ```
+
+### Running the MCP Server
+
+**Option 1: Direct Python execution**
+```bash
+python -m mcp_server.mcp_server --host 0.0.0.0 --port 8000
+```
+
+**Option 2: Using the CLI command (if installed)**
+```bash
+cli-agent-server --host 0.0.0.0 --port 8000
+```
+
+**Option 3: Default localhost**
+```bash
+python -m mcp_server.mcp_server
+# Runs on localhost:3000 by default
+```
+
+### What Happens at Startup
+
+When you start the server, it will:
+
+1. **System Detection**: Identify your operating system
+2. **Package Manager Setup**: 
+   - On Mac: Install Homebrew if not present
+   - On Linux: Detect and use apt/yum/dnf as available
+3. **System Information Gathering**: Collect comprehensive system details
+4. **HTTP Server Start**: Begin listening for LLM requests
+
+Example startup output:
+```
+==================================================
+DevEnv MCP Server for OpenAI Cloud Integration
+==================================================
+
+🔧 Initializing system...
+✅ System type: macOS (darwin)
+🍺 Homebrew already installed at: /opt/homebrew/bin/brew
+✅ Package manager ready: brew
+
+Starting HTTP server on 0.0.0.0:8000
+OpenAI models can now send HTTP requests to this server
+System information is ready for immediate LLM queries
+```
+
+## Connecting to OpenAI
+
+Configure your OpenAI client to connect to the MCP server:
+
+```python
+# Example configuration for OpenAI MCP client
+mcp_config = {
+    "transport": "http",
+    "host": "localhost",  # or your server host
+    "port": 3000,         # or your chosen port
+    "path": "/mcp"
+}
+```
+
+The server provides these capabilities to the LLM:
+
+### Resources
+- **System Information**: Complete system details (OS, package managers, installed tools)
+
+### Tools
+- **install_tool**: Install development tools (e.g., "node", "docker", "python")
+- **update_tool**: Update existing tools to latest versions
+- **uninstall_tool**: Remove tools from the system
+- **check_tool_version**: Check current version of installed tools
+- **get_system_setup**: Get current system configuration and status
+
+## Usage Examples
+
+Once connected, the LLM can make requests like:
+
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "install_tool",
+    "arguments": {
+      "tool_name": "node"
+    }
+  }
+}
+```
+
+```json
+{
+  "method": "tools/call", 
+  "params": {
+    "name": "get_system_setup",
+    "arguments": {}
+  }
+}
+```
+
+## Project Structure
+
+```
+├── mcp_server/
+│   ├── mcp_server.py      # Main HTTP server with FastMCP
+│   ├── system_utils.py    # System setup and initialization
+│   └── __init__.py
+├── tools/
+│   ├── tool_manager.py    # Integration layer for tool operations
+│   ├── os_utils.py        # Basic OS detection utilities
+│   ├── constants.py       # Tool definitions and constants
+│   └── installers/        # Platform-specific installation logic
+├── mcp_client/            # MCP client utilities
+├── llm_parser/           # LLM response parsing
+├── main.py              # Legacy entry point
+├── pyproject.toml       # Package configuration
+└── requirements.txt     # Dependencies
+```
+
+## Development
+
+### System Architecture
+
+- **MCP Server Domain**: All system setup, initialization, and MCP-specific logic
+- **Tools Domain**: Minimal integration layer, respects teammate implementations
+- **Clear Boundaries**: No interference with installer implementations in `tools/installers/`
+
+### Adding New Tools
+
+1. Add tool definition to `tools/constants.py`
+2. Implement installer in appropriate `tools/installers/` file
+3. The MCP server will automatically expose it via the `install_tool` interface
+
+### Testing
+
+Test the server manually:
+
+```bash
+# Start the server
+python -m mcp_server.mcp_server --port 8000
+
+# In another terminal, test with curl
+curl -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"method": "tools/list"}'
+```
+
+## Supported Platforms
+
+- **macOS**: Full support with Homebrew auto-installation
+- **Linux**: Supports Ubuntu (apt), RHEL/CentOS (yum), Fedora (dnf)
+- **Windows**: Not supported (removed for team focus)
+
+## Dependencies
+
+- **Python**: >=3.12
+- **fastmcp**: >=0.1.0 (MCP server framework)
+- **UV**: For dependency management (`uv pip sync requirements.txt`)
+
+## Team Notes
+
+This MCP server implementation:
+- ✅ Uses HTTP transport for cloud LLM integration
+- ✅ Handles all system setup automatically  
+- ✅ Provides rich system context to LLMs
+- ✅ Maintains clean boundaries with teammate code
+- ✅ Is production-ready and well-documented
+- ✅ Easy for new interns to understand and run
+
+The server initializes the system once at startup, then serves tool requests efficiently. All installation logic remains in the `tools/` domain where teammates can continue their implementations without conflicts.

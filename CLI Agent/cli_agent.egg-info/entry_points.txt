@@ -1,0 +1,2 @@
+[console_scripts]
+cli-agent-server = mcp_server.mcp_server:main

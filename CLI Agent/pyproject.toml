@@ -1,9 +1,19 @@
 [project]
 name = "cli-agent"
 version = "0.1.0"
-description = "Add your description here"
+description = "A CLI agent with MCP server for development tool management"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "fastmcp>=0.1.0",
 ]
+
+[project.scripts]
+cli-agent-server = "mcp_server.mcp_server:main"
+
+[tool.setuptools.packages.find]
+include = ["mcp_server*", "mcp_client*", "llm_parser*", "tools*"]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
