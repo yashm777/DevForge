@@ -4,18 +4,19 @@ import shutil
 def get_os_type():
     """
     Detects the underlying operating system and returns it as a lowercase string.
-    Only supports Mac and Linux.
+    Now supports Mac, Linux, and Windows.
     Returns:
-        str: "linux" or "darwin"
+        str: "linux", "darwin", or "windows"
     Raises:
-        EnvironmentError: if OS is not supported (Windows or unknown)
+        EnvironmentError: if OS is not supported (unknown)
     """
     os_type = platform.system().lower()
     if os_type == "windows":
-        raise EnvironmentError("Windows is not supported. Only Mac and Linux are supported.")
-    elif os_type not in ("linux", "darwin"):
-        raise EnvironmentError(f"Unsupported operating system: {os_type}. Only Mac and Linux are supported.")
-    return os_type
+        return "windows"
+    elif os_type in ("linux", "darwin"):
+        return os_type
+    else:
+        raise EnvironmentError(f"Unsupported operating system: {os_type}. Only Mac, Linux, and Windows are supported.")
 
 def is_linux():
     return get_os_type() == "linux"
