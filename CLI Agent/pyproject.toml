@@ -3,16 +3,24 @@ name = "cli-agent"
 version = "0.1.0"
 description = "A CLI agent with MCP server for development tool management"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.8"
 dependencies = [
     "fastmcp>=0.1.0",
+    "openai>=1.0.0",
+    "click>=8.0.0",
+    "requests>=2.25.0",
+    "rich>=13.0.0",
+    "typer>=0.9.0",
+    "pydantic>=2.0.0",
 ]
 
 [project.scripts]
+cli-agent = "cli_agent.main:main"
 cli-agent-server = "mcp_server.mcp_server:main"
 
 [tool.setuptools.packages.find]
-include = ["mcp_server*", "mcp_client*", "llm_parser*", "tools*"]
+where = ["."]
+include = ["*"]
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
