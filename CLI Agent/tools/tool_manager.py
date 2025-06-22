@@ -1,4 +1,8 @@
 from tools.os_utils import get_os_type
+from tools.code_generator import generate_code
+import os
+import json
+import logging
 
 # Map task to folder
 TASK_MODULE_MAP = {
@@ -64,3 +68,27 @@ def handle_request(request: dict) -> dict:
     # Handle all other unexpected errors gracefully
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+class ToolManager:
+    """
+    Provides a class interface for tool management actions for use in the CLI.
+    """
+    def install_tool(self, tool_name, version="latest"):
+        resp = handle_request({"task": "install", "tool": tool_name, "version": version})
+        return resp.get("message", resp)
+
+    def uninstall_tool(self, tool_name):
+        resp = handle_request({"task": "uninstall", "tool": tool_name})
+        return resp.get("message", resp)
+
+    def update_tool(self, tool_name, version="latest"):
+        resp = handle_request({"task": "update", "tool": tool_name, "version": version})
+        return resp.get("message", resp)
+
+    def check_version(self, tool_name):
+        resp = handle_request({"task": "version", "tool": tool_name})
+        return resp.get("message", resp)
+
+def generate_code_tool(description: str) -> dict:
+    """Legacy function for backward compatibility. Use tools.code_generator.generate_code instead."""
+    return generate_code(description)
