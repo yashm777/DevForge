@@ -63,14 +63,14 @@ cli-agent run "write python code for a calculator"
 cli-agent run --output my_code.py "create a web scraper"
 ```
 
-### Chained Commands
+<!-- ### Chained Commands (coming soon)
 
 You can chain multiple commands together:
 
 ```bash
 cli-agent run "install docker and tell me what version you used"
 cli-agent run "setup nodejs then check its version"
-```
+``` -->
 
 ### MCP Server
 
@@ -205,11 +205,3 @@ Enable verbose output for debugging:
 ```bash
 cli-agent run --verbose "your command here"
 ```
-
-## License
-
-[Add your license information here]
-
-## Contributing
-
-[Add contribution guidelines here] 
