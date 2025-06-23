@@ -7,7 +7,7 @@ from tools.os_utils import get_linux_distro
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def uninstall_tool_linux(tool_name: str) -> dict:
+def handle_tool(tool_name: str, version: str = "latest") -> dict:
     """
     Uninstalls a tool on supported Linux distributions using their native package managers.
 
@@ -18,10 +18,17 @@ def uninstall_tool_linux(tool_name: str) -> dict:
 
     Args:
         tool_name (str): Name of the software to uninstall.
+        version (str): Version parameter (not used for uninstall).
 
     Returns:
         dict: Status message and optional details.
     """
+    if shutil.which("sudo") is None:
+        return {
+            "status": "error",
+            "message": "sudo not found. Please install sudo or run as root."
+        }
+
     distro = get_linux_distro()
 
     # Select the appropriate uninstall command based on distro
@@ -34,6 +41,15 @@ def uninstall_tool_linux(tool_name: str) -> dict:
             }
         command = ["sudo", "apt", "remove", "-y", tool_name]
 
+    elif distro in ("fedora", "centos", "rhel"):
+        if shutil.which("dnf") is None:
+            logger.error("DNF not found.")
+            return {
+                "status": "error",
+                "message": "DNF not found. Cannot uninstall."
+            }
+        command = ["sudo", "dnf", "remove", "-y", tool_name]
+
     elif distro == "alpine":
         if shutil.which("apk") is None:
             logger.error("APK not found.")
@@ -43,7 +59,7 @@ def uninstall_tool_linux(tool_name: str) -> dict:
             }
         command = ["sudo", "apk", "del", tool_name]
 
-    elif distro == "arch":
+    elif distro in ("arch", "manjaro"):
         if shutil.which("pacman") is None:
             logger.error("Pacman not found.")
             return {
@@ -67,14 +83,25 @@ def uninstall_tool_linux(tool_name: str) -> dict:
         logger.info(f"Uninstallation successful: {tool_name}")
         return {
             "status": "success",
-            "message": f"{tool_name} uninstalled successfully.",
-            "details": result.stdout.strip()
+            "message": f"{tool_name} uninstalled successfully on {distro}",
+            "details": result.stdout.strip(),
+            "distribution": distro
         }
 
     except subprocess.CalledProcessError as e:
         logger.error(f"Uninstallation failed: {e.stderr.strip()}")
         return {
             "status": "error",
-            "message": f"Failed to uninstall {tool_name}.",
+            "message": f"Failed to uninstall {tool_name} on {distro}",
             "details": e.stderr.strip() if e.stderr else "No additional error details."
         }
+    except Exception as e:
+        logger.error(f"Unexpected error during uninstallation: {e}")
+        return {
+            "status": "error",
+            "message": f"Unexpected error during uninstallation: {str(e)}"
+        }
+
+# Legacy function for backward compatibility
+def uninstall_tool_linux(tool_name: str, version: str = "latest") -> dict:
+    return handle_tool(tool_name, version)

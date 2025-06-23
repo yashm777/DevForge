@@ -6,12 +6,13 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def uninstall_tool_mac(tool_name: str) -> dict:
+def handle_tool(tool_name: str, version: str = "latest") -> dict:
     """
     Uninstalls a tool on macOS using Homebrew or Homebrew Cask.
 
     Args:
         tool_name (str): Name of the software to uninstall.
+        version (str): Version parameter (not used for uninstall).
 
     Returns:
         dict: Status message and optional details.
@@ -38,14 +39,25 @@ def uninstall_tool_mac(tool_name: str) -> dict:
         logger.info(f"Uninstallation successful: {tool_name}")
         return {
             "status": "success",
-            "message": f"{tool_name} uninstalled successfully.",
-            "details": result.stdout.strip()
+            "message": f"{tool_name} uninstalled successfully via Homebrew",
+            "details": result.stdout.strip(),
+            "type": "cask" if is_cask else "formula"
         }
 
     except subprocess.CalledProcessError as e:
         logger.error(f"Uninstallation failed: {e.stderr.strip()}")
         return {
             "status": "error",
-            "message": f"Failed to uninstall {tool_name}.",
+            "message": f"Failed to uninstall {tool_name} via Homebrew",
             "details": e.stderr.strip() if e.stderr else "No additional error details."
         }
+    except Exception as e:
+        logger.error(f"Unexpected error during uninstallation: {e}")
+        return {
+            "status": "error",
+            "message": f"Unexpected error during uninstallation: {str(e)}"
+        }
+
+# Legacy function for backward compatibility
+def uninstall_tool_mac(tool_name: str, version: str = "latest") -> dict:
+    return handle_tool(tool_name, version)
