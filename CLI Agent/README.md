@@ -10,23 +10,115 @@ An AI-powered development assistant with MCP (Model Context Protocol) integratio
 - **Code Generation**: Generate Python code from natural language descriptions
 - **System Information**: Get detailed system and server information
 
+## Prerequisites
+
+Before installing DevForge CLI Agent, ensure you have the following:
+
+### Fresh System Setup
+
+#### Windows
+1. **Install Python**: Download and run the installer from [python.org](https://python.org/downloads/)
+   - ✅ Check "Add Python to PATH" during installation
+   - ✅ Choose "Install for all users" (recommended)
+2. **Install Git**: Download and run the installer from [git-scm.com](https://git-scm.com/download/win)
+   - ✅ Choose "Git from the command line and also from 3rd-party software"
+   - ✅ Keep other default settings
+3. **Open Command Prompt** and verify: `python --version` and `git --version`
+
+#### macOS
+1. **Install Homebrew** (if not already installed):
+   ```bash
+   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+   ```
+2. **Install Python and Git**:
+   ```bash
+   brew install python git
+   ```
+
+#### Linux (Ubuntu/Debian)
+```bash
+sudo apt update
+sudo apt install python3 python3-pip git
+```
+
+#### Linux (CentOS/RHEL/Fedora)
+```bash
+sudo dnf install python3 python3-pip git
+```
+
+### Install UV Package Manager
+Once Python is installed, install the UV package manager:
+```bash
+pip install uv
+```
+
 ## Installation
 
-1. Clone the repository:
+### Option 1: Quick Setup (Recommended)
+
+**Use our automated setup scripts that check all prerequisites and install dependencies:**
+
+#### Windows
+1. **Clone the repository**:
+   ```cmd
+   git clone <repository-url>
+   cd "DevForge CLI Agent"
+   ```
+2. **Run the setup script**: Double-click `setup.bat` or run:
+   ```cmd
+   setup.bat
+   ```
+
+#### macOS/Linux
+1. **Clone the repository**:
+   ```bash
+   git clone <repository-url>
+   cd "DevForge CLI Agent"
+   ```
+2. **Run the setup script**:
+   ```bash
+   bash setup.sh
+   ```
+
+The setup scripts will:
+- ✅ Check if Python, Git, and UV are installed
+- ✅ Install UV package manager if missing
+- ✅ Install all project dependencies with `uv sync`
+- ✅ Provide next steps and usage examples
+
+### Option 2: Manual Installation
+
+If you prefer to install manually:
+
+1. **Clone the repository**:
 ```bash
 git clone <repository-url>
-cd DevForge-test/CLI\ Agent
+cd "DevForge CLI Agent"
 ```
 
-2. Install dependencies:
+2. **Install dependencies**:
 ```bash
-pip install -e .
+uv sync
 ```
 
-3. Set up your OpenAI API key:
+3. **Set up your OpenAI API key**:
 ```bash
 export OPENAI_API_KEY="your-api-key-here"
 ```
+
+4. **Start the MCP server**:
+```bash
+uv run python -m mcp_server.mcp_server --host localhost --port 8000
+```
+
+## Quick Setup Script
+
+For convenience, you can use our setup scripts:
+
+**Windows**: Double-click `setup.bat`  
+**macOS/Linux**: Run `bash setup.sh`
+
+These scripts will check prerequisites and guide you through any missing dependencies.
 
 ## Usage
 
@@ -36,15 +128,28 @@ The CLI agent supports natural language commands for tool management:
 
 ```bash
 # Install tools
-cli-agent run "install docker"
-cli-agent run "get nodejs"
-cli-agent run "setup python"
+uv run cli-agent run "install docker"
+uv run cli-agent run "get nodejs"
+uv run cli-agent run "setup python"
 
 # Uninstall tools
-cli-agent run "remove docker"
-cli-agent run "uninstall nodejs"
+uv run cli-agent run "remove docker"
+uv run cli-agent run "uninstall nodejs"
 
 # Update tools
+uv run cli-agent run "update docker"
+uv run cli-agent run "upgrade python"
+
+# Check versions
+uv run cli-agent run "version of docker"
+uv run cli-agent run "what version is nodejs"
+
+# Generate code
+uv run cli-agent run "generate a python function to sort a list"
+
+# Get system information
+uv run cli-agent run "show system info"
+```
 cli-agent run "update docker"
 cli-agent run "upgrade python"
 
@@ -77,8 +182,50 @@ cli-agent run "setup nodejs then check its version"
 Start the MCP server for enhanced functionality:
 
 ```bash
-cli-agent server --host localhost --port 8000
+uv run python -m mcp_server.mcp_server --host localhost --port 8000
 ```
+
+## Troubleshooting
+
+### Common Issues
+
+#### "ModuleNotFoundError: No module named 'fastapi'"
+**Solution**: Run `uv sync` to install all dependencies.
+
+#### "uv: command not found"
+**Solution**: Install UV package manager:
+```bash
+pip install uv
+```
+
+#### "Permission denied" on macOS/Linux
+**Solution**: The CLI agent will attempt to install missing package managers (like Homebrew) automatically. If you see permission prompts, they are for legitimate system operations.
+
+#### "Multiple packages found" on Windows
+**Solution**: The CLI agent will show you available options. Choose the one you want by running the command again with the specific package ID.
+
+#### OpenAI API Issues
+**Solutions**:
+- Ensure your API key is set: `echo $OPENAI_API_KEY`
+- Verify your API key is valid at [OpenAI Platform](https://platform.openai.com/)
+- Check your API usage limits and billing
+
+### Fresh System Checklist
+
+If you're setting up on a completely fresh system:
+
+1. ✅ Python 3.8+ installed and in PATH
+2. ✅ UV package manager installed (`pip install uv`)
+3. ✅ Repository cloned
+4. ✅ Dependencies installed (`uv sync`)
+5. ✅ OpenAI API key configured
+6. ✅ MCP server running (for full functionality)
+
+### Getting Help
+
+- Check our setup scripts: `./setup.sh` (macOS/Linux) or `setup.bat` (Windows)
+- View system information: `uv run cli-agent run "system info"`
+- Report issues on our GitHub repository
 
 ## Architecture
 
