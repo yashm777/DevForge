@@ -18,9 +18,51 @@ def install_tool(tool, version="latest"):
         if version != "latest":
             cmd += ["--version", version]
     elif os_type == "darwin":
-        cmd = ["brew", "install", tool]
+        # Check if Homebrew is available, install if not found
+        if not shutil.which("brew"):
+            try:
+                # Install Homebrew using the official installation script
+                install_brew_cmd = [
+                    "/bin/bash", "-c", 
+                    "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+                ]
+                
+                print("Homebrew not found. Installing Homebrew...")
+                brew_result = subprocess.run(install_brew_cmd, capture_output=True, text=True, timeout=300)
+                
+                if brew_result.returncode == 0:
+                    # Add Homebrew to PATH for the current session
+                    import os
+                    homebrew_paths = ["/opt/homebrew/bin", "/usr/local/bin"]
+                    current_path = os.environ.get("PATH", "")
+                    for brew_path in homebrew_paths:
+                        if brew_path not in current_path:
+                            os.environ["PATH"] = f"{brew_path}:{current_path}"
+                    
+                    # Verify Homebrew is now available
+                    if not shutil.which("brew"):
+                        return {"status": "error", "message": "Homebrew installation completed but brew command still not found. Please restart your terminal."}
+                    
+                    print("Homebrew installed successfully!")
+                else:
+                    return {
+                        "status": "error", 
+                        "message": f"Failed to install Homebrew: {brew_result.stderr.strip() or brew_result.stdout.strip()}"
+                    }
+            except subprocess.TimeoutExpired:
+                return {"status": "error", "message": "Homebrew installation timed out. Please install manually."}
+            except Exception as e:
+                return {"status": "error", "message": f"Error installing Homebrew: {str(e)}"}
+        
         if version != "latest":
-            cmd += ["--cask", tool+"@"+version] if tool in ["python", "node", "java"] else ["--version", version]
+            # Use proper Homebrew version syntax for tools that support it
+            if tool in ["python", "node", "java", "go", "php"]:
+                cmd = ["brew", "install", f"{tool}@{version}"]
+            else:
+                # Most tools don't support version pinning in Homebrew
+                cmd = ["brew", "install", tool]
+        else:
+            cmd = ["brew", "install", tool]
     elif os_type == "linux":
         if shutil.which("apt"):
             cmd = ["sudo", "apt", "install", "-y", tool]
@@ -132,13 +174,15 @@ def update_tool(tool, version="latest"):
         cmd = ["brew", "upgrade", tool]
     elif os_type == "linux":
         if shutil.which("apt"):
-            cmd = ["sudo", "apt", "upgrade", "-y", tool]
+            # For apt: update package list, then install/upgrade specific tool
+            cmd = ["bash", "-c", f"sudo apt update && sudo apt install -y {tool}"]
         elif shutil.which("dnf"):
             cmd = ["sudo", "dnf", "upgrade", "-y", tool]
         elif shutil.which("pacman"):
-            cmd = ["sudo", "pacman", "-Syu", "--noconfirm", tool]
+            # Fix: Update specific package, not entire system
+            cmd = ["sudo", "pacman", "-S", "--noconfirm", tool]
         elif shutil.which("apk"):
-            cmd = ["sudo", "apk", "upgrade", tool]
+            cmd = ["sudo", "apk", "add", "--upgrade", tool]
         else:
             return {"status": "error", "message": "No supported package manager found."}
     else:
@@ -177,22 +221,63 @@ def version_tool(tool, version=None):
         except Exception as e:
             return {"status": "error", "message": str(e)}
     elif os_type == "darwin":
-        cmd = [tool, "--version"]
+        # Try direct version command first with multiple flags
+        for version_flag in ["--version", "-v", "-V", "version"]:
+            try:
+                direct_cmd = [tool, version_flag]
+                result = subprocess.run(direct_cmd, capture_output=True, text=True, timeout=10)
+                if result.returncode == 0:
+                    return {"status": "success", "message": result.stdout.strip()}
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                continue
+        
+        # Fall back to Homebrew list if direct command fails
+        try:
+            cmd = ["brew", "list", "--versions", tool]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            if result.returncode == 0:
+                return {"status": "success", "message": result.stdout.strip() or f"{tool} is installed"}
+            else:
+                return {"status": "error", "message": f"{tool} not found or not installed via Homebrew"}
+        except subprocess.TimeoutExpired:
+            return {"status": "error", "message": f"Timeout checking version for {tool}"}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
     elif os_type == "linux":
-        cmd = [tool, "--version"]
+        # Try direct version command first with multiple flags
+        for version_flag in ["--version", "-v", "-V", "version"]:
+            try:
+                direct_cmd = [tool, version_flag]
+                result = subprocess.run(direct_cmd, capture_output=True, text=True, timeout=10)
+                if result.returncode == 0:
+                    return {"status": "success", "message": result.stdout.strip()}
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                continue
+        
+        # Fall back to package manager queries
+        try:
+            if shutil.which("apt"):
+                cmd = ["dpkg", "-l", tool]
+            elif shutil.which("dnf"):
+                cmd = ["dnf", "list", "installed", tool]
+            elif shutil.which("pacman"):
+                cmd = ["pacman", "-Q", tool]
+            elif shutil.which("apk"):
+                cmd = ["apk", "info", tool]
+            else:
+                return {"status": "error", "message": "No supported package manager found"}
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            if result.returncode == 0:
+                return {"status": "success", "message": result.stdout.strip() or f"{tool} is installed"}
+            else:
+                return {"status": "error", "message": f"{tool} not found or not installed"}
+        except subprocess.TimeoutExpired:
+            return {"status": "error", "message": f"Timeout checking version for {tool}"}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
     else:
         return {"status": "error", "message": f"Unsupported OS: {os_type}"}
-    
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-        if result.returncode == 0:
-            return {"status": "success", "message": result.stdout.strip()}
-        else:
-            return {"status": "error", "message": result.stderr.strip() or result.stdout.strip()}
-    except subprocess.TimeoutExpired:
-        return {"status": "error", "message": f"Timeout checking version for {tool}"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
 
 def get_system_info():
     return {
