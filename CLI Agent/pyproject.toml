@@ -5,7 +5,6 @@ description = "A CLI agent with MCP server for development tool management"
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
-    "fastmcp>=0.1.0",
     "openai>=1.0.0",
     "click>=8.0.0",
     "requests>=2.25.0",

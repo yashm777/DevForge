@@ -4,7 +4,6 @@ Version: 0.1.0
 Summary: A CLI agent with MCP server for development tool management
 Requires-Python: >=3.8
 Description-Content-Type: text/markdown
-Requires-Dist: fastmcp>=0.1.0
 Requires-Dist: openai>=1.0.0
 Requires-Dist: click>=8.0.0
 Requires-Dist: requests>=2.25.0
@@ -77,14 +76,14 @@ cli-agent run "write python code for a calculator"
 cli-agent run --output my_code.py "create a web scraper"
 ```
 
-### Chained Commands
+<!-- ### Chained Commands (coming soon)
 
 You can chain multiple commands together:
 
 ```bash
 cli-agent run "install docker and tell me what version you used"
 cli-agent run "setup nodejs then check its version"
-```
+``` -->
 
 ### MCP Server
 
@@ -219,4 +218,3 @@ Enable verbose output for debugging:
 ```bash
 cli-agent run --verbose "your command here"
 ```
-
