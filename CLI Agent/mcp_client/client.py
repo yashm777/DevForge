@@ -1,111 +1,49 @@
-import subprocess
-import json
-import uuid
-import threading
-import time
+import requests
 from typing import Optional, Dict, Any
 
-class MCPClient:
-    def __init__(self, server_cmd: list, retries: int = 3, timeout: float = 10.0):
-        self.server_cmd = server_cmd
-        self.retries = retries
-        self.timeout = timeout
-        self.responses = {}
-        self.lock = threading.Lock()
-        self.process = None
-        self.reader_thread = None
-
-    def start(self):
-        self.process = subprocess.Popen(
-            self.server_cmd,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1
-        )
-        self.reader_thread = threading.Thread(target=self._read_stdout, daemon=True)
-        self.reader_thread.start()
-
-    def _read_stdout(self):
-        for line in self.process.stdout:
-            try:
-                response = json.loads(line.strip())
-                response_id = response.get("id")
-                if response_id:
-                    with self.lock:
-                        self.responses[response_id] = response
-            except json.JSONDecodeError:
-                continue
-
-    def _send_request(self, method: str, params: dict) -> Optional[Dict[str, Any]]:
-        request_id = str(uuid.uuid4())
+class HTTPMCPClient:
+    """HTTP-based MCP client for communicating with MCP server via REST API"""
+    
+    def __init__(self, base_url="http://localhost:8000"):
+        self.base_url = base_url
+        self.mcp_url = f"{base_url}/mcp/"
+    
+    def _make_request(self, method: str, params: dict):
         payload = {
-            "id": request_id,
+            "jsonrpc": "2.0",
+            "id": "1",
             "method": method,
             "params": params
         }
-
-        if not self.process or self.process.stdin.closed:
-            raise RuntimeError("MCP server process is not running or has been closed.")
-
         try:
-            self.process.stdin.write(json.dumps(payload) + '\n')
-            self.process.stdin.flush()
+            response = requests.post(self.mcp_url, json=payload, timeout=30)
+            if response.status_code == 200:
+                return response.json()
+            else:
+                return {"error": f"HTTP {response.status_code}: {response.text}"}
+        except requests.exceptions.ConnectionError:
+            return {"error": "Cannot connect to MCP server. Please start the server first with: uv run python -m mcp_server.mcp_server"}
         except Exception as e:
-            return {"status": "error", "message": f"Failed to send request: {e}"}
-
-        # Wait for response with timeout
-        start_time = time.time()
-        while time.time() - start_time < self.timeout:
-            with self.lock:
-                if request_id in self.responses:
-                    return self.responses.pop(request_id)
-            time.sleep(0.1)
-
-        return {"status": "error", "message": "Request timed out."}
-
-    def call(self, method: str, params: dict) -> dict:
-        for attempt in range(1, self.retries + 1):
-            response = self._send_request(method, params)
-            if response and response.get("status") != "error":
-                return response
-            time.sleep(0.5 * attempt)  # exponential backoff
-        return {"status": "error", "message": f"All retries failed for method: {method}"}
-
-    def tool_action(self, task: str, tool_name: str, version: str = "latest") -> dict:
-        return self.call("tool_action_wrapper", {
+            return {"error": f"Request failed: {str(e)}"}
+    
+    def tool_action(self, task: str, tool_name: str, version: str = "latest"):
+        return self._make_request("tool_action_wrapper", {
             "task": task,
             "tool_name": tool_name,
             "version": version
         })
-
-    def get_server_info(self) -> dict:
-        return self.call("info://server", {})
     
-    def generate_code(self, description: str) -> dict:
-        return self.call("generate_code", {"description": description})
+    def get_server_info(self):
+        return self._make_request("info://server", {})
     
-    def call_jsonrpc(self, method: str, params: dict) -> dict:
-        return self.call(method, params)
-
-    def stop(self):
-        if self.process:
-            self.process.terminate()
-            self.process.wait()
-
-if __name__ == "__main__":
-    # Update with the correct path to your MCP server script
-    mcp_client = MCPClient(["python", "your_mcp_server.py"])
-    try:
-        mcp_client.start()
-        print("Fetching server info...")
-        info = mcp_client.get_server_info()
-        print(json.dumps(info, indent=2))
-
-        print("\nInstalling Docker...")
-        result = mcp_client.tool_action("install", "docker")
-        print(json.dumps(result, indent=2))
-
-    finally:
-        mcp_client.stop()
+    def generate_code(self, description: str):
+        result = self._make_request("generate_code", {"description": description})
+        if "result" in result and "code" in result["result"]:
+            return result["result"]["code"]
+        elif "error" in result:
+            return f"[Error] {result['error']}"
+        else:
+            return "[Error] No code returned"
+    
+    def call_jsonrpc(self, method: str, params: dict):
+        return self._make_request(method, params)

@@ -6,7 +6,12 @@ import subprocess
 import shutil
 import sys
 import os
+import logging
 from tools.code_generator import generate_code
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
@@ -260,6 +265,45 @@ def version_tool(tool, version=None):
             except (subprocess.TimeoutExpired, FileNotFoundError):
                 continue
         
+        # Check for macOS applications in typical installation directories
+        app_locations = [
+            f"/Applications/{tool.capitalize()}.app",
+            f"/Applications/{tool}.app",
+            f"/System/Applications/{tool.capitalize()}.app",
+            f"/System/Applications/{tool}.app",
+            f"/usr/local/bin/{tool}",
+            f"/opt/homebrew/bin/{tool}"
+        ]
+        
+        for app_path in app_locations:
+            if os.path.exists(app_path):
+                if app_path.endswith('.app'):
+                    # Try to get version from Info.plist
+                    try:
+                        plist_path = os.path.join(app_path, "Contents", "Info.plist")
+                        if os.path.exists(plist_path):
+                            import plistlib
+                            with open(plist_path, 'rb') as f:
+                                plist_data = plistlib.load(f)
+                            version = plist_data.get('CFBundleShortVersionString') or plist_data.get('CFBundleVersion')
+                            app_name = plist_data.get('CFBundleDisplayName') or plist_data.get('CFBundleName') or tool
+                            if version:
+                                return {"status": "success", "message": f"{app_name} {version} (installed as macOS app)"}
+                            else:
+                                return {"status": "success", "message": f"{app_name} is installed as macOS app (version unknown)"}
+                    except Exception as e:
+                        return {"status": "success", "message": f"{tool} is installed as macOS app at {app_path}"}
+                else:
+                    # It's a binary, try to get version
+                    for version_flag in ["--version", "-v", "-V", "version"]:
+                        try:
+                            result = subprocess.run([app_path, version_flag], capture_output=True, text=True, timeout=10)
+                            if result.returncode == 0:
+                                return {"status": "success", "message": result.stdout.strip()}
+                        except:
+                            continue
+                    return {"status": "success", "message": f"{tool} is installed at {app_path}"}
+        
         # Fall back to Homebrew list if direct command fails
         try:
             cmd = ["brew", "list", "--versions", tool]
@@ -322,9 +366,14 @@ def get_system_info():
 @app.post("/mcp/")
 async def mcp_endpoint(request: Request):
     req = await request.json()
+    logger.info(f"Incoming MCP request: {req}")
+    
     method = req.get("method")
     params = req.get("params", {})
     id_ = req.get("id")
+    
+    logger.info(f"Method: {method}, Params: {params}")
+    
     result = None
     if method == "tool_action_wrapper":
         task = params.get("task")
@@ -356,10 +405,16 @@ async def mcp_endpoint(request: Request):
         media_type="application/json"
     )
 
-if __name__ == "__main__":
+def main():
+    """Main entry point for the MCP server."""
     import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--host", default="localhost")
-    parser.add_argument("--port", type=int, default=8000)
+    parser = argparse.ArgumentParser(description="Start the MCP server")
+    parser.add_argument("--host", default="localhost", help="Host to bind to")
+    parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
     args = parser.parse_args()
+    
+    logger.info(f"Starting MCP server on {args.host}:{args.port}")
     uvicorn.run("mcp_server.mcp_server:app", host=args.host, port=args.port, reload=False)
+
+if __name__ == "__main__":
+    main()

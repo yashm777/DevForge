@@ -1,28 +1,21 @@
 [project]
 name = "cli-agent"
-version = "0.1.0"
-description = "A CLI agent with MCP server for development tool management"
+version = "1.0.0"
+description = "AI-powered development assistant with MCP integration"
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
     "openai>=1.0.0",
-    "click>=8.0.0",
     "requests>=2.25.0",
     "rich>=13.0.0",
     "typer>=0.9.0",
     "pydantic>=2.0.0",
     "fastapi>=0.100.0",
-    "uvicorn>=0.20.0",
-    "python-dotenv>=1.0.0",
+    "uvicorn>=0.23.0",
 ]
 
 [project.scripts]
 cli-agent = "cli_agent.main:main"
-cli-agent-server = "mcp_server.mcp_server:main"
-
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["*"]
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]

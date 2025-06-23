@@ -2,38 +2,31 @@
 
 An AI-powered development assistant with MCP (Model Context Protocol) integration that allows you to manage development tools and environments using natural language commands.
 
-## Features
+## 🚀 Features
 
 - **Natural Language Commands**: Use plain English to install, uninstall, update, and check versions of development tools
 - **MCP Integration**: Built-in MCP server and client for enhanced tool management capabilities
 - **Cross-Platform Support**: Works on Windows, macOS, and Linux
 - **Code Generation**: Generate Python code from natural language descriptions
 - **System Information**: Get detailed system and server information
+- **Enhanced macOS App Detection**: Improved version checking for GUI applications
 
-## Prerequisites
+## 📋 Prerequisites
 
-Before installing DevForge CLI Agent, ensure you have the following:
+- **Python 3.8+** 
+- **Git** (optional, for cloning)
+- **OpenAI API Key** (for natural language parsing)
 
-### Fresh System Setup
-
-#### Windows
-1. **Install Python**: Download and run the installer from [python.org](https://python.org/downloads/)
-   - ✅ Check "Add Python to PATH" during installation
-   - ✅ Choose "Install for all users" (recommended)
-2. **Install Git**: Download and run the installer from [git-scm.com](https://git-scm.com/download/win)
-   - ✅ Choose "Git from the command line and also from 3rd-party software"
-   - ✅ Keep other default settings
-3. **Open Command Prompt** and verify: `python --version` and `git --version`
+### Quick Prerequisites Check
 
 #### macOS
-1. **Install Homebrew** (if not already installed):
-   ```bash
-   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-   ```
-2. **Install Python and Git**:
-   ```bash
-   brew install python git
-   ```
+```bash
+# Install Homebrew (if not already installed)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Install Python and Git
+brew install python git
+```
 
 #### Linux (Ubuntu/Debian)
 ```bash
@@ -41,314 +34,235 @@ sudo apt update
 sudo apt install python3 python3-pip git
 ```
 
-#### Linux (CentOS/RHEL/Fedora)
-```bash
-sudo dnf install python3 python3-pip git
-```
-
-### Install UV Package Manager
-Once Python is installed, install the UV package manager:
-```bash
-pip install uv
-```
-
-## Installation
-
-### Option 1: Quick Setup (Recommended)
-
-**Use our automated setup scripts that check all prerequisites and install dependencies:**
-
 #### Windows
-1. **Clone the repository**:
-   ```cmd
-   git clone <repository-url>
-   cd "DevForge CLI Agent"
-   ```
-2. **Run the setup script**: Double-click `setup.bat` or run:
-   ```cmd
-   setup.bat
-   ```
+1. Download Python from [python.org](https://python.org/downloads/)
+2. Download Git from [git-scm.com](https://git-scm.com/download/win)
 
-#### macOS/Linux
-1. **Clone the repository**:
-   ```bash
-   git clone <repository-url>
-   cd "DevForge CLI Agent"
-   ```
-2. **Run the setup script**:
-   ```bash
-   bash setup.sh
-   ```
+## ⚡ Quick Setup
 
-The setup scripts will:
-- ✅ Check if Python, Git, and UV are installed
-- ✅ Install UV package manager if missing
-- ✅ Install all project dependencies with `uv sync`
-- ✅ Provide next steps and usage examples
-
-### Option 2: Manual Installation
-
-If you prefer to install manually:
-
-1. **Clone the repository**:
+### 1. Clone & Install
 ```bash
+# Clone the repository
 git clone <repository-url>
 cd "DevForge CLI Agent"
-```
 
-2. **Install dependencies**:
-```bash
+# Install with UV (recommended)
+pip install uv
 uv sync
+
+# Or install with pip
+pip install -r requirements.txt
 ```
 
-3. **Set up your OpenAI API key**:
+### 2. Set API Key
 ```bash
 export OPENAI_API_KEY="your-api-key-here"
 ```
 
-4. **Start the MCP server**:
+### 3. Start the MCP Server
 ```bash
-uv run python -m mcp_server.mcp_server --host localhost --port 8000
+# Option 1: Using CLI agent
+cli-agent server
+
+# Option 2: Direct Python module
+python -m mcp_server.mcp_server
 ```
 
-## Quick Setup Script
+### 4. Use the Agent
+```bash
+# Try some commands
+cli-agent run "install docker"
+cli-agent run "audacity version"
+cli-agent run "generate code for a hello world flask app"
+```
 
-For convenience, you can use our setup scripts:
-
-**Windows**: Double-click `setup.bat`  
-**macOS/Linux**: Run `bash setup.sh`
-
-These scripts will check prerequisites and guide you through any missing dependencies.
-
-## Usage
+## 🎯 Usage
 
 ### Basic Commands
 
-The CLI agent supports natural language commands for tool management:
-
 ```bash
 # Install tools
-uv run cli-agent run "install docker"
-uv run cli-agent run "get nodejs"
-uv run cli-agent run "setup python"
+cli-agent run "install docker"
+cli-agent run "get nodejs" 
+cli-agent run "setup python"
 
-# Uninstall tools
-uv run cli-agent run "remove docker"
-uv run cli-agent run "uninstall nodejs"
+# Check versions
+cli-agent run "audacity version"
+cli-agent run "python version"
+cli-agent run "what version is nodejs"
 
 # Update tools
-uv run cli-agent run "update docker"
-uv run cli-agent run "upgrade python"
+cli-agent run "update docker"
+cli-agent run "upgrade nodejs"
 
-# Check versions
-uv run cli-agent run "version of docker"
-uv run cli-agent run "what version is nodejs"
+# Uninstall tools
+cli-agent run "remove docker"
+cli-agent run "uninstall nodejs"
 
 # Generate code
-uv run cli-agent run "generate a python function to sort a list"
-
-# Get system information
-uv run cli-agent run "show system info"
-```
-cli-agent run "update docker"
-cli-agent run "upgrade python"
-
-# Check versions
-cli-agent run "what version of docker"
-cli-agent run "check version nodejs"
-cli-agent run "python version"
+cli-agent run "generate a python function to sort a list" --output sort.py
+cli-agent run "create a flask web server"
 
 # System information
 cli-agent run "system info"
 cli-agent run "what os am i using"
-
-# Code generation
-cli-agent run "generate code for a hello world function"
-cli-agent run "write python code for a calculator"
-cli-agent run --output my_code.py "create a web scraper"
 ```
 
-<!-- ### Chained Commands (coming soon)
-
-You can chain multiple commands together:
+### Command Options
 
 ```bash
-cli-agent run "install docker and tell me what version you used"
-cli-agent run "setup nodejs then check its version"
-``` -->
+# Save generated code to file
+cli-agent run "generate code" --output filename.py
 
-### MCP Server
+# Enable verbose output
+cli-agent run "install docker" --verbose
 
-Start the MCP server for enhanced functionality:
-
-```bash
-uv run python -m mcp_server.mcp_server --host localhost --port 8000
+# Server options
+cli-agent server --host localhost --port 8000 --verbose
 ```
 
-## Troubleshooting
+## 🏗️ Architecture
 
-### Common Issues
-
-#### "ModuleNotFoundError: No module named 'fastapi'"
-**Solution**: Run `uv sync` to install all dependencies.
-
-#### "uv: command not found"
-**Solution**: Install UV package manager:
-```bash
-pip install uv
+### Clean Project Structure
 ```
-
-#### "Permission denied" on macOS/Linux
-**Solution**: The CLI agent will attempt to install missing package managers (like Homebrew) automatically. If you see permission prompts, they are for legitimate system operations.
-
-#### "Multiple packages found" on Windows
-**Solution**: The CLI agent will show you available options. Choose the one you want by running the command again with the specific package ID.
-
-#### OpenAI API Issues
-**Solutions**:
-- Ensure your API key is set: `echo $OPENAI_API_KEY`
-- Verify your API key is valid at [OpenAI Platform](https://platform.openai.com/)
-- Check your API usage limits and billing
-
-### Fresh System Checklist
-
-If you're setting up on a completely fresh system:
-
-1. ✅ Python 3.8+ installed and in PATH
-2. ✅ UV package manager installed (`pip install uv`)
-3. ✅ Repository cloned
-4. ✅ Dependencies installed (`uv sync`)
-5. ✅ OpenAI API key configured
-6. ✅ MCP server running (for full functionality)
-
-### Getting Help
-
-- Check our setup scripts: `./setup.sh` (macOS/Linux) or `setup.bat` (Windows)
-- View system information: `uv run cli-agent run "system info"`
-- Report issues on our GitHub repository
-
-## Architecture
+CLI Agent/
+├── cli_agent/          # Main CLI application
+│   ├── __init__.py    # Package initialization  
+│   └── main.py        # CLI entry point with Typer
+├── mcp_client/        # MCP client implementation
+│   ├── __init__.py   # Package exports
+│   └── client.py     # HTTP-based MCP client
+├── mcp_server/       # MCP server implementation
+│   ├── __init__.py  # Package initialization
+│   └── mcp_server.py # FastAPI MCP server with logging
+├── llm_parser/      # Natural language parsing
+│   ├── __init__.py # Package exports
+│   └── parser.py   # OpenAI-powered command parser
+├── tools/          # Utility tools
+│   ├── __init__.py # Package exports
+│   └── code_generator.py # Code generation utilities
+├── pyproject.toml  # Python project configuration
+├── requirements.txt # Dependencies
+├── uv.lock        # Dependency lock file
+└── README.md      # This file
+```
 
 ### Core Components
 
-- **CLI Interface** (`cli_agent/main.py`): Main command-line interface using Typer and Rich
-- **LLM Parser** (`llm_parser/parser.py`): Natural language command parsing using OpenAI GPT-4o
-- **MCP Client** (`mcp_client/client.py`): HTTP-based MCP client for tool communication
-- **MCP Server** (`mcp_server/mcp_server.py`): MCP server providing tool management services
-- **Tool Manager** (`tools/tool_manager.py`): Central tool management and code generation
+1. **CLI Interface** (`cli_agent/main.py`): 
+   - Typer-based CLI with Rich formatting
+   - Handles user commands and output formatting
 
-### Tool Management System
+2. **HTTP MCP Client** (`mcp_client/client.py`):
+   - Clean HTTP client for MCP communication
+   - Simplified interface for tool actions
 
-The tool management system is organized by platform and action type:
+3. **MCP Server** (`mcp_server/mcp_server.py`):
+   - FastAPI-based server with request logging
+   - Enhanced macOS application detection
+   - Cross-platform tool management
 
+4. **LLM Parser** (`llm_parser/parser.py`):
+   - OpenAI GPT-4 powered natural language parsing
+   - Converts human commands to structured requests
+
+5. **Code Generator** (`tools/code_generator.py`):
+   - AI-powered code generation utilities
+   - Integrated with main CLI workflow
+
+## 🔧 Development
+
+### Running from Source
+```bash
+# Start server in development mode
+python -m mcp_server.mcp_server --host localhost --port 8000
+
+# Run CLI agent
+python -m cli_agent.main run "your command"
 ```
-tools/
-├── installers/     # Tool installation logic
-│   ├── windows.py
-│   ├── mac.py
-│   └── linux.py
-├── uninstallers/   # Tool removal logic
-│   ├── windows.py
-│   ├── mac.py
-│   └── linux.py
-├── upgraders/      # Tool update logic
-│   ├── windows.py
-│   ├── mac.py
-│   └── linux.py
-├── version_checkers/ # Version checking logic
-│   ├── windows.py
-│   ├── mac.py
-│   └── linux.py
-├── tool_manager.py # Central tool management
-├── os_utils.py     # OS detection utilities
-└── constants.py    # System constants
-```
-
-### Code Generation
-
-The code generation tool is integrated into the tool manager and uses OpenAI's GPT-4o model to generate Python code from natural language descriptions.
-
-## Configuration
-
-### Environment Variables
-
-- `OPENAI_API_KEY`: Required for natural language parsing and code generation
-
-### Dependencies
-
-Key dependencies include:
-- `typer`: CLI framework
-- `rich`: Terminal formatting and UI
-- `openai`: OpenAI API integration
-- `requests`: HTTP client for MCP communication
-
-## Development
-
-### Project Structure
-
-```
-CLI Agent/
-├── cli_agent/           # Main CLI package
-│   ├── __init__.py
-│   └── main.py         # CLI entry point
-├── llm_parser/         # Natural language parsing
-│   ├── __init__.py
-│   └── parser.py       # Command parsing logic
-├── mcp_client/         # MCP client implementation
-│   ├── __init__.py
-│   └── client.py       # HTTP-based MCP client
-├── mcp_server/         # MCP server implementation
-│   ├── __init__.py
-│   ├── mcp_server.py   # Server implementation
-│   └── system_utils.py # System utilities
-├── tools/              # Tool management system
-│   ├── installers/     # Platform-specific installers
-│   ├── uninstallers/   # Platform-specific uninstallers
-│   ├── upgraders/      # Platform-specific upgraders
-│   ├── version_checkers/ # Platform-specific version checkers
-│   ├── tool_manager.py # Central tool management
-│   ├── os_utils.py     # OS detection
-│   └── constants.py    # Constants
-├── pyproject.toml      # Project configuration
-├── requirements.txt    # Dependencies
-└── README.md          # This file
-```
-
-### Adding New Tools
-
-To add support for a new tool:
-
-1. Implement platform-specific handlers in the appropriate directories
-2. Add tool patterns to the LLM parser
-3. Update the tool manager if needed
 
 ### Testing
-
-Test the CLI agent with various commands:
-
 ```bash
-# Test basic functionality
+# Test server is running
+curl -X POST http://localhost:8000/mcp/ \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "id": "1", "method": "info://server", "params": {}}'
+
+# Test CLI commands
 cli-agent run "system info"
-
-# Test tool installation
-cli-agent run "install docker"
-
-# Test code generation
-cli-agent run "generate code for a simple calculator"
+cli-agent run "python version"
 ```
 
-## Troubleshooting
+## 🐛 Troubleshooting
 
 ### Common Issues
 
-1. **OpenAI API Key Not Set**: Ensure `OPENAI_API_KEY` environment variable is set
-2. **MCP Server Connection Issues**: Check if the server is running on the correct port
-3. **Tool Installation Failures**: Verify platform-specific handlers are implemented
+**1. "Cannot connect to MCP server"**
+```bash
+# Solution: Start the server first
+cli-agent server
+```
+
+**2. "OpenAI API key not set"**
+```bash
+# Solution: Set your API key
+export OPENAI_API_KEY="your-key-here"
+```
+
+**3. "Command not found: cli-agent"**
+```bash
+# Solution: Install the package
+pip install -e .
+# Or use direct Python execution
+python -m cli_agent.main run "your command"
+```
+
+**4. Import errors**
+```bash
+# Solution: Install dependencies
+uv sync
+# Or
+pip install -r requirements.txt
+```
 
 ### Debug Mode
-
-Enable verbose output for debugging:
-
 ```bash
-cli-agent run --verbose "your command here"
+# Enable verbose logging
+cli-agent run "your command" --verbose
 ```
+
+### Check Installation
+```bash
+# Verify server is working
+cli-agent run "system info"
+
+# Check if tools are detected
+cli-agent run "python version"
+cli-agent run "audacity version"  # Tests macOS app detection
+```
+
+## 📝 Configuration
+
+### Environment Variables
+- `OPENAI_API_KEY`: Required for natural language parsing
+
+### Server Configuration
+The MCP server runs on `localhost:8000` by default and includes:
+- Request/response logging
+- Enhanced macOS application detection  
+- Cross-platform tool management
+- JSON-RPC 2.0 protocol support
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
+
+## 📄 License
+
+[Add your license information here]
+
+
