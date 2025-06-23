@@ -11,6 +11,14 @@ from tools.code_generator import generate_code
 app = FastAPI()
 
 # --- Tool Handlers ---
+def check_sudo_access():
+    """Check if user has sudo access without password prompt"""
+    try:
+        result = subprocess.run(["sudo", "-n", "true"], capture_output=True, text=True, timeout=5)
+        return result.returncode == 0
+    except:
+        return False
+
 def install_tool(tool, version="latest"):
     os_type = platform.system().lower()
     if os_type == "windows":
@@ -64,6 +72,13 @@ def install_tool(tool, version="latest"):
         else:
             cmd = ["brew", "install", tool]
     elif os_type == "linux":
+        # Check sudo access first
+        if not check_sudo_access():
+            return {
+                "status": "error", 
+                "message": "sudo access required for package installation. Please run: sudo -v"
+            }
+        
         if shutil.which("apt"):
             cmd = ["sudo", "apt", "install", "-y", tool]
         elif shutil.which("dnf"):
@@ -143,6 +158,13 @@ def uninstall_tool(tool, version=None):
     elif os_type == "darwin":
         cmd = ["brew", "uninstall", tool]
     elif os_type == "linux":
+        # Check sudo access first
+        if not check_sudo_access():
+            return {
+                "status": "error", 
+                "message": "sudo access required for package removal. Please run: sudo -v"
+            }
+        
         if shutil.which("apt"):
             cmd = ["sudo", "apt", "remove", "-y", tool]
         elif shutil.which("dnf"):
@@ -173,6 +195,13 @@ def update_tool(tool, version="latest"):
     elif os_type == "darwin":
         cmd = ["brew", "upgrade", tool]
     elif os_type == "linux":
+        # Check sudo access first
+        if not check_sudo_access():
+            return {
+                "status": "error", 
+                "message": "sudo access required for package updates. Please run: sudo -v"
+            }
+        
         if shutil.which("apt"):
             # For apt: update package list, then install/upgrade specific tool
             cmd = ["bash", "-c", f"sudo apt update && sudo apt install -y {tool}"]
@@ -286,7 +315,7 @@ def get_system_info():
         "machine": platform.machine(),
         "python_version": platform.python_version(),
         "cwd": os.getcwd(),
-        "user": os.getenv("USERNAME") or os.getenv("USER")
+        "user": os.getenv("USERNAME") or os.getenv("USER") or "unknown"
     }
 
 # --- JSON-RPC 2.0 Handler ---

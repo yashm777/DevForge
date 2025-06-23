@@ -4,6 +4,10 @@ import sys
 import os
 import logging
 from typing import Dict, Any, Optional, List
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 
@@ -85,7 +89,7 @@ def parse_user_command(user_input: str) -> Dict[str, Any]:
         
         logging.debug("Sending prompt to OpenAI...")
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You are an AI command parser. Return only valid JSON."},
                 {"role": "user", "content": prompt}

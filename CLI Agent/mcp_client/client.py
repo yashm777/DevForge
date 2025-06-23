@@ -82,6 +82,12 @@ class MCPClient:
 
     def get_server_info(self) -> dict:
         return self.call("info://server", {})
+    
+    def generate_code(self, description: str) -> dict:
+        return self.call("generate_code", {"description": description})
+    
+    def call_jsonrpc(self, method: str, params: dict) -> dict:
+        return self.call(method, params)
 
     def stop(self):
         if self.process:
