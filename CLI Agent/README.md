@@ -256,16 +256,6 @@ The MCP server runs on `localhost:8000` by default and includes:
 - Cross-platform tool management
 - JSON-RPC 2.0 protocol support
 
-## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
-
-## 📄 License
-
-[Add your license information here]
 
 
