@@ -55,10 +55,11 @@ pip install -r requirements.txt
 ```
 
 ### 2. Set API Key
-```bash or cmd
+```bash 
+# bash or cmd
 export OPENAI_API_KEY="your-api-key-here"
 ```
-``` powershell
+# powershell
 $env:OPENAI_API_KEY = "API_KEY"
 ```
 
