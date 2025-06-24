@@ -48,15 +48,18 @@ cd "DevForge CLI Agent"
 
 # Install with UV (recommended)
 pip install uv
-uv sync
+uv sync && uv pip install -e .
 
 # Or install with pip
 pip install -r requirements.txt
 ```
 
 ### 2. Set API Key
-```bash
+```bash or cmd
 export OPENAI_API_KEY="your-api-key-here"
+```
+``` powershell
+$env:OPENAI_API_KEY = "API_KEY"
 ```
 
 ### 3. Start the MCP Server
