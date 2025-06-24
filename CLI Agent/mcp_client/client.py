@@ -31,19 +31,22 @@ class HTTPMCPClient:
             "task": task,
             "tool_name": tool_name,
             "version": version
-        })
-    
+        })    
     def get_server_info(self):
         return self._make_request("info://server", {})
     
     def generate_code(self, description: str):
         result = self._make_request("generate_code", {"description": description})
-        if "result" in result and "code" in result["result"]:
-            return result["result"]["code"]
+        # Handle the nested result structure
+        if "result" in result:
+            inner_result = result["result"]
+            if "code" in inner_result:
+                return inner_result["code"]
+            elif "status" in inner_result and inner_result["status"] == "error":
+                return f"[Error] {inner_result.get('message', 'Code generation failed')}"
         elif "error" in result:
             return f"[Error] {result['error']}"
-        else:
-            return "[Error] No code returned"
+        return "[Error] No code returned"
     
     def call_jsonrpc(self, method: str, params: dict):
         return self._make_request(method, params)
