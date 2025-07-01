@@ -1,13 +1,27 @@
+# --- File: mcpserver.py ---
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import uvicorn
 import platform
-import subprocess
-import shutil
-import sys
 import os
+import subprocess
 import logging
 from tools.code_generator import generate_code
+from tools.installers.mac import install_mac_tool
+from tools.installers.windows import install_windows_tool
+from tools.installers.linux import install_linux_tool
+from tools.uninstallers.mac import uninstall_mac_tool
+from tools.uninstallers.windows import uninstall_windows_tool
+from tools.uninstallers.linux import uninstall_linux_tool
+from tools.version_checkers.mac import check_version as check_version_mac
+from tools.version_checkers.windows import check_version as check_version_windows
+from tools.version_checkers.linux import check_version as check_version_linux
+from tools.upgraders.mac import handle_tool
+from tools.upgraders.windows import handle_tool
+from tools.upgraders.linux import handle_tool
+import traceback
+
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -15,340 +29,48 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-# --- Tool Handlers ---
-def check_sudo_access():
-    """Check if user has sudo access without password prompt"""
-    try:
-        result = subprocess.run(["sudo", "-n", "true"], capture_output=True, text=True, timeout=5)
-        return result.returncode == 0
-    except:
-        return False
-
+# --- Dispatcher Functions ---
 def install_tool(tool, version="latest"):
     os_type = platform.system().lower()
     if os_type == "windows":
-        cmd = ["winget", "install", tool, "--silent", "--accept-source-agreements", "--accept-package-agreements"]
-        if version != "latest":
-            cmd += ["--version", version]
+        return install_windows_tool(tool, version)
     elif os_type == "darwin":
-        # Check if Homebrew is available, install if not found
-        if not shutil.which("brew"):
-            try:
-                # Install Homebrew using the official installation script
-                install_brew_cmd = [
-                    "/bin/bash", "-c", 
-                    "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-                ]
-                
-                print("Homebrew not found. Installing Homebrew...")
-                brew_result = subprocess.run(install_brew_cmd, capture_output=True, text=True, timeout=300)
-                
-                if brew_result.returncode == 0:
-                    # Add Homebrew to PATH for the current session
-                    import os
-                    homebrew_paths = ["/opt/homebrew/bin", "/usr/local/bin"]
-                    current_path = os.environ.get("PATH", "")
-                    for brew_path in homebrew_paths:
-                        if brew_path not in current_path:
-                            os.environ["PATH"] = f"{brew_path}:{current_path}"
-                    
-                    # Verify Homebrew is now available
-                    if not shutil.which("brew"):
-                        return {"status": "error", "message": "Homebrew installation completed but brew command still not found. Please restart your terminal."}
-                    
-                    print("Homebrew installed successfully!")
-                else:
-                    return {
-                        "status": "error", 
-                        "message": f"Failed to install Homebrew: {brew_result.stderr.strip() or brew_result.stdout.strip()}"
-                    }
-            except subprocess.TimeoutExpired:
-                return {"status": "error", "message": "Homebrew installation timed out. Please install manually."}
-            except Exception as e:
-                return {"status": "error", "message": f"Error installing Homebrew: {str(e)}"}
-        
-        if version != "latest":
-            # Use proper Homebrew version syntax for tools that support it
-            if tool in ["python", "node", "java", "go", "php"]:
-                cmd = ["brew", "install", f"{tool}@{version}"]
-            else:
-                # Most tools don't support version pinning in Homebrew
-                cmd = ["brew", "install", tool]
-        else:
-            cmd = ["brew", "install", tool]
+        return install_mac_tool(tool, version)
     elif os_type == "linux":
-        # Check sudo access first
-        if not check_sudo_access():
-            return {
-                "status": "error", 
-                "message": "sudo access required for package installation. Please run: sudo -v"
-            }
-        
-        if shutil.which("apt"):
-            cmd = ["sudo", "apt", "install", "-y", tool]
-        elif shutil.which("dnf"):
-            cmd = ["sudo", "dnf", "install", "-y", tool]
-        elif shutil.which("pacman"):
-            cmd = ["sudo", "pacman", "-S", "--noconfirm", tool]
-        elif shutil.which("apk"):
-            cmd = ["sudo", "apk", "add", tool]
-        else:
-            return {"status": "error", "message": "No supported package manager found."}
+        return install_linux_tool(tool)
     else:
         return {"status": "error", "message": f"Unsupported OS: {os_type}"}
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        output = result.stdout + "\n" + result.stderr
-        if result.returncode == 0:
-            return {"status": "success", "message": result.stdout.strip() or f"Installed {tool}"}
-        else:
-            # Special handling for winget ambiguous package
-            if os_type == "windows" and "Multiple packages found" in output:
-                # Parse the options - handle the actual winget output format
-                import re
-                options = []
-                lines = output.splitlines()
-                
-                # Look for the actual package entries in the output
-                for line in lines:
-                    line = line.strip()
-                    if not line or "Name" in line and "Id" in line or re.match(r'^-+$', line):
-                        continue
-                    
-                    # Try to parse any package line, not just docker-related
-                    parts = line.split()
-                    if len(parts) >= 2:
-                        # Find where the ID starts (usually after the name)
-                        name_parts = []
-                        id_start = -1
-                        
-                        for i, part in enumerate(parts):
-                            if re.match(r'^[A-Z0-9]+\.[A-Za-z0-9]+$', part) or re.match(r'^[A-Z0-9]+$', part):
-                                id_start = i
-                                break
-                            name_parts.append(part)
-                        
-                        if id_start > 0:
-                            name = ' '.join(name_parts)
-                            package_id = parts[id_start]
-                            source = parts[-1] if len(parts) > id_start + 1 else "unknown"
-                            
-                            options.append({
-                                "name": name,
-                                "id": package_id,
-                                "source": source
-                            })
-                
-                # If still no options, create a simple fallback
-                if not options:
-                    options = [
-                        {"name": "Docker Desktop", "id": "Docker.DockerDesktop", "source": "winget"},
-                        {"name": "Docker Desktop", "id": "XP8CBJ40XLBWKX", "source": "msstore"}
-                    ]
-                
-                return {
-                    "status": "ambiguous",
-                    "message": "Multiple packages found. Please select one.",
-                    "options": options,
-                    "raw": output
-                }
-            return {"status": "error", "message": output.strip()}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
 
-def uninstall_tool(tool, version=None):
+def uninstall_tool(tool):
     os_type = platform.system().lower()
     if os_type == "windows":
-        cmd = ["winget", "uninstall", tool, "--silent", "--accept-source-agreements"]
+        return uninstall_windows_tool(tool)
     elif os_type == "darwin":
-        cmd = ["brew", "uninstall", tool]
+        return uninstall_mac_tool(tool)
     elif os_type == "linux":
-        # Check sudo access first
-        if not check_sudo_access():
-            return {
-                "status": "error", 
-                "message": "sudo access required for package removal. Please run: sudo -v"
-            }
-        
-        if shutil.which("apt"):
-            cmd = ["sudo", "apt", "remove", "-y", tool]
-        elif shutil.which("dnf"):
-            cmd = ["sudo", "dnf", "remove", "-y", tool]
-        elif shutil.which("pacman"):
-            cmd = ["sudo", "pacman", "-R", "--noconfirm", tool]
-        elif shutil.which("apk"):
-            cmd = ["sudo", "apk", "del", tool]
-        else:
-            return {"status": "error", "message": "No supported package manager found."}
+        return uninstall_linux_tool(tool)
     else:
         return {"status": "error", "message": f"Unsupported OS: {os_type}"}
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode == 0:
-            return {"status": "success", "message": result.stdout.strip() or f"Uninstalled {tool}"}
-        else:
-            return {"status": "error", "message": result.stderr.strip() or result.stdout.strip()}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
 
-def update_tool(tool, version="latest"):
+def check_version(tool):
     os_type = platform.system().lower()
     if os_type == "windows":
-        cmd = ["winget", "upgrade", tool, "--silent", "--accept-source-agreements", "--accept-package-agreements"]
-        if version != "latest":
-            cmd += ["--version", version]
+        return check_version_windows(tool)
     elif os_type == "darwin":
-        cmd = ["brew", "upgrade", tool]
+        return check_version_mac(tool)
     elif os_type == "linux":
-        # Check sudo access first
-        if not check_sudo_access():
-            return {
-                "status": "error", 
-                "message": "sudo access required for package updates. Please run: sudo -v"
-            }
-        
-        if shutil.which("apt"):
-            # For apt: update package list, then install/upgrade specific tool
-            cmd = ["bash", "-c", f"sudo apt update && sudo apt install -y {tool}"]
-        elif shutil.which("dnf"):
-            cmd = ["sudo", "dnf", "upgrade", "-y", tool]
-        elif shutil.which("pacman"):
-            # Fix: Update specific package, not entire system
-            cmd = ["sudo", "pacman", "-S", "--noconfirm", tool]
-        elif shutil.which("apk"):
-            cmd = ["sudo", "apk", "add", "--upgrade", tool]
-        else:
-            return {"status": "error", "message": "No supported package manager found."}
+        return check_version_linux(tool)
     else:
         return {"status": "error", "message": f"Unsupported OS: {os_type}"}
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode == 0:
-            return {"status": "success", "message": result.stdout.strip() or f"Updated {tool}"}
-        else:
-            return {"status": "error", "message": result.stderr.strip() or result.stdout.strip()}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
 
-def version_tool(tool, version=None):
+def upgrade_tool(tool, version="latest"):
     os_type = platform.system().lower()
     if os_type == "windows":
-        # Try direct version command first (faster)
-        try:
-            direct_cmd = [tool, "--version"]
-            result = subprocess.run(direct_cmd, capture_output=True, text=True, timeout=10)
-            if result.returncode == 0:
-                return {"status": "success", "message": result.stdout.strip()}
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            pass
-        
-        # Fall back to winget list if direct command fails
-        try:
-            cmd = ["winget", "list", tool]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-            if result.returncode == 0:
-                return {"status": "success", "message": result.stdout.strip()}
-            else:
-                return {"status": "error", "message": result.stderr.strip() or result.stdout.strip()}
-        except subprocess.TimeoutExpired:
-            return {"status": "error", "message": f"Timeout checking version for {tool}"}
-        except Exception as e:
-            return {"status": "error", "message": str(e)}
+        return handle_tool(tool, version)
     elif os_type == "darwin":
-        # Try direct version command first with multiple flags
-        for version_flag in ["--version", "-v", "-V", "version"]:
-            try:
-                direct_cmd = [tool, version_flag]
-                result = subprocess.run(direct_cmd, capture_output=True, text=True, timeout=10)
-                if result.returncode == 0:
-                    return {"status": "success", "message": result.stdout.strip()}
-            except (subprocess.TimeoutExpired, FileNotFoundError):
-                continue
-        
-        # Check for macOS applications in typical installation directories
-        app_locations = [
-            f"/Applications/{tool.capitalize()}.app",
-            f"/Applications/{tool}.app",
-            f"/System/Applications/{tool.capitalize()}.app",
-            f"/System/Applications/{tool}.app",
-            f"/usr/local/bin/{tool}",
-            f"/opt/homebrew/bin/{tool}"
-        ]
-        
-        for app_path in app_locations:
-            if os.path.exists(app_path):
-                if app_path.endswith('.app'):
-                    # Try to get version from Info.plist
-                    try:
-                        plist_path = os.path.join(app_path, "Contents", "Info.plist")
-                        if os.path.exists(plist_path):
-                            import plistlib
-                            with open(plist_path, 'rb') as f:
-                                plist_data = plistlib.load(f)
-                            version = plist_data.get('CFBundleShortVersionString') or plist_data.get('CFBundleVersion')
-                            app_name = plist_data.get('CFBundleDisplayName') or plist_data.get('CFBundleName') or tool
-                            if version:
-                                return {"status": "success", "message": f"{app_name} {version} (installed as macOS app)"}
-                            else:
-                                return {"status": "success", "message": f"{app_name} is installed as macOS app (version unknown)"}
-                    except Exception as e:
-                        return {"status": "success", "message": f"{tool} is installed as macOS app at {app_path}"}
-                else:
-                    # It's a binary, try to get version
-                    for version_flag in ["--version", "-v", "-V", "version"]:
-                        try:
-                            result = subprocess.run([app_path, version_flag], capture_output=True, text=True, timeout=10)
-                            if result.returncode == 0:
-                                return {"status": "success", "message": result.stdout.strip()}
-                        except:
-                            continue
-                    return {"status": "success", "message": f"{tool} is installed at {app_path}"}
-        
-        # Fall back to Homebrew list if direct command fails
-        try:
-            cmd = ["brew", "list", "--versions", tool]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-            if result.returncode == 0:
-                return {"status": "success", "message": result.stdout.strip() or f"{tool} is installed"}
-            else:
-                return {"status": "error", "message": f"{tool} not found or not installed via Homebrew"}
-        except subprocess.TimeoutExpired:
-            return {"status": "error", "message": f"Timeout checking version for {tool}"}
-        except Exception as e:
-            return {"status": "error", "message": str(e)}
+        return handle_tool(tool, version)
     elif os_type == "linux":
-        # Try direct version command first with multiple flags
-        for version_flag in ["--version", "-v", "-V", "version"]:
-            try:
-                direct_cmd = [tool, version_flag]
-                result = subprocess.run(direct_cmd, capture_output=True, text=True, timeout=10)
-                if result.returncode == 0:
-                    return {"status": "success", "message": result.stdout.strip()}
-            except (subprocess.TimeoutExpired, FileNotFoundError):
-                continue
-        
-        # Fall back to package manager queries
-        try:
-            if shutil.which("apt"):
-                cmd = ["dpkg", "-l", tool]
-            elif shutil.which("dnf"):
-                cmd = ["dnf", "list", "installed", tool]
-            elif shutil.which("pacman"):
-                cmd = ["pacman", "-Q", tool]
-            elif shutil.which("apk"):
-                cmd = ["apk", "info", tool]
-            else:
-                return {"status": "error", "message": "No supported package manager found"}
-            
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-            if result.returncode == 0:
-                return {"status": "success", "message": result.stdout.strip() or f"{tool} is installed"}
-            else:
-                return {"status": "error", "message": f"{tool} not found or not installed"}
-        except subprocess.TimeoutExpired:
-            return {"status": "error", "message": f"Timeout checking version for {tool}"}
-        except Exception as e:
-            return {"status": "error", "message": str(e)}
+        return handle_tool(tool, version)
     else:
         return {"status": "error", "message": f"Unsupported OS: {os_type}"}
 
@@ -362,48 +84,83 @@ def get_system_info():
         "user": os.getenv("USERNAME") or os.getenv("USER") or "unknown"
     }
 
-# --- JSON-RPC 2.0 Handler ---
+
+# Task dispatch dictionary
+task_handlers = {
+    "install": install_tool,
+    "uninstall": uninstall_tool,
+    "update": upgrade_tool,
+    "upgrade": upgrade_tool,
+    "version": check_version,
+}
+
+
 @app.post("/mcp/")
 async def mcp_endpoint(request: Request):
-    req = await request.json()
-    logger.info(f"Incoming MCP request: {req}")
-    
-    method = req.get("method")
-    params = req.get("params", {})
-    id_ = req.get("id")
-    
-    logger.info(f"Method: {method}, Params: {params}")
-    
-    result = None
-    if method == "tool_action_wrapper":
-        task = params.get("task")
-        tool = params.get("tool_name")
-        version = params.get("version", "latest")
-        if task == "install":
-            result = install_tool(tool, version)
-        elif task == "uninstall":
-            result = uninstall_tool(tool)
-        elif task == "update":
-            result = update_tool(tool, version)
-        elif task == "version":
-            result = version_tool(tool)
+    try:
+        req = await request.json()
+        logger.info(f"Incoming MCP request: {req}")
+
+        method = req.get("method")
+        params = req.get("params", {})
+        id_ = req.get("id")
+
+        logger.info(f"Method: {method}, Params: {params}")
+
+        result = None
+        if method == "tool_action_wrapper":
+            task = params.get("task")
+            tool = params.get("tool_name")
+            version = params.get("version", "latest")
+
+            handler = task_handlers.get(task)
+            if handler:
+                # uninstall_tool expects only tool param, others also get version
+                if task == "uninstall":
+                    result = handler(tool)
+                elif method == "generate_code":
+                    description = params.get("description")
+                    result = generate_code(description)
+                else:
+                    result = handler(tool, version)
+            else:
+                result = {"status": "error", "message": f"Unknown task: {task}"}
+
+        elif method == "generate_code":
+            description = params.get("description")
+            result = generate_code(description)
+
+        elif method == "info://server":
+            result = get_system_info()
+
         else:
-            result = {"status": "error", "message": f"Unknown task: {task}"}
-    elif method == "generate_code":
-        description = params.get("description")
-        result = generate_code(description)
-    elif method == "info://server":
-        result = get_system_info()
-    else:
-        result = {"status": "error", "message": f"Unknown method: {method}"}
-    return JSONResponse(
-        content={
-            "jsonrpc": "2.0",
-            "id": id_,
-            "result": result
-        },
-        media_type="application/json"
-    )
+            result = {"status": "error", "message": f"Unknown method: {method}"}
+
+        return JSONResponse(
+            content={
+                "jsonrpc": "2.0",
+                "id": id_,
+                "result": result
+            },
+            media_type="application/json"
+        )
+    except Exception as e:
+        # Log the full traceback for debugging
+        logger.error(f"Exception in mcp_endpoint: {e}\n{traceback.format_exc()}")
+
+        # Return a JSON error response
+        return JSONResponse(
+            status_code=500,
+            content={
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {
+                    "code": 500,
+                    "message": f"Internal Server Error: {str(e)}"
+                }
+            },
+            media_type="application/json"
+        )
 
 def main():
     """Main entry point for the MCP server."""
@@ -412,9 +169,10 @@ def main():
     parser.add_argument("--host", default="localhost", help="Host to bind to")
     parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
     args = parser.parse_args()
-    
+
     logger.info(f"Starting MCP server on {args.host}:{args.port}")
     uvicorn.run("mcp_server.mcp_server:app", host=args.host, port=args.port, reload=False)
+
 
 if __name__ == "__main__":
     main()
