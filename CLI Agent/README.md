@@ -26,6 +26,9 @@ An AI-powered development assistant with MCP (Model Context Protocol) integratio
 
 # Install Python and Git
 brew install python git
+
+# Install UV (recommended package manager)
+pip install uv
 ```
 
 #### Linux (Ubuntu/Debian)
@@ -50,6 +53,10 @@ cd "DevForge CLI Agent"
 pip install uv
 uv sync && uv pip install -e .
 
+# For macOS: If you want to use direct commands (cli-agent server, cli-agent run)
+# Activate the virtual environment:
+source .venv/bin/activate
+
 # Or install with pip
 pip install -r requirements.txt
 ```
@@ -65,10 +72,10 @@ $env:OPENAI_API_KEY = "API_KEY"
 
 ### 3. Start the MCP Server
 ```bash
-# Option 1: Using CLI agent
+# Option 1: If virtual environment is activated (after source .venv/bin/activate)
 cli-agent server 
 
-# Option 2: Using UV
+# Option 2: Using UV (without activating virtual environment)
 uv run cli-agent server
 
 # Option 3: Direct Python module
@@ -78,10 +85,42 @@ python -m mcp_server.mcp_server
 ### 4. Use the Agent
 ```bash
 # Try some commands
+
+# Option A: If virtual environment is activated
+cli-agent run "sys info"
 cli-agent run "install docker"
 cli-agent run "audacity version"
 cli-agent run "generate code for a hello world flask app"
+
+# Option B: Using UV (without activating virtual environment)
+uv run cli-agent run "sys info"
+uv run cli-agent run "install docker"
+uv run cli-agent run "audacity version"
+uv run cli-agent run "generate code for a hello world flask app"
 ```
+
+## 💡 Usage Patterns
+
+### Two Ways to Use the CLI Agent
+
+**Option A: With Virtual Environment Activated**
+```bash
+# After installation, activate the virtual environment
+source .venv/bin/activate
+
+# Now you can use direct commands
+cli-agent server
+cli-agent run "your command"
+```
+
+**Option B: Using UV (Recommended)**
+```bash
+# Use UV to run commands without activating virtual environment
+uv run cli-agent server
+uv run cli-agent run "your command"
+```
+
+> **Note**: Both methods work equally well. Option A is more convenient for multiple commands in the same session, while Option B is better for one-off commands.
 
 ## 🎯 Usage
 
