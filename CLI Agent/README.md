@@ -66,9 +66,12 @@ $env:OPENAI_API_KEY = "API_KEY"
 ### 3. Start the MCP Server
 ```bash
 # Option 1: Using CLI agent
-cli-agent server
+cli-agent server 
 
-# Option 2: Direct Python module
+# Option 2: Using UV
+uv run cli-agent server
+
+# Option 3: Direct Python module
 python -m mcp_server.mcp_server
 ```
 
