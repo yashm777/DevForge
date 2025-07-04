@@ -14,22 +14,45 @@ def install_linux_tool(tool):
             "status": "error", 
             "message": "sudo access required for package installation. Please run: sudo -v"
         }
-    if shutil.which("apt"):
-        cmd = ["sudo", "apt", "install", "-y", tool]
-    elif shutil.which("dnf"):
-        cmd = ["sudo", "dnf", "install", "-y", tool]
-    elif shutil.which("pacman"):
-        cmd = ["sudo", "pacman", "-S", "--noconfirm", tool]
-    elif shutil.which("apk"):
-        cmd = ["sudo", "apk", "add", tool]
-    else:
-        return {"status": "error", "message": "No supported package manager found."}
+
     try:
+        if shutil.which("apt-get"):
+            cmd = ["sudo", "apt-get", "update"]
+            subprocess.run(cmd, capture_output=True, text=True, check=True)
+
+            cmd = ["sudo", "apt-get", "install", "-y", tool]
+
+        elif shutil.which("dnf"):
+            cmd = ["sudo", "dnf", "install", "-y", tool]
+
+        elif shutil.which("pacman"):
+            cmd = ["sudo", "pacman", "-Sy", "--noconfirm", tool]
+
+        elif shutil.which("apk"):
+            cmd = ["sudo", "apk", "add", tool]
+
+        else:
+            return {"status": "error", "message": "No supported package manager found."}
+
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode == 0:
-            return {"status": "success", "message": result.stdout.strip() or f"Installed {tool}"}
+            return {
+                "status": "success",
+                "message": result.stdout.strip() or f"Installed {tool}"
+            }
         else:
-            return {"status": "error", "message": result.stderr.strip() or result.stdout.strip()}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+            return {
+                "status": "error",
+                "message": result.stderr.strip() or result.stdout.strip()
+            }
 
+    except subprocess.CalledProcessError as e:
+        return {
+            "status": "error",
+            "message": f"Installation failed: {e.stderr.strip() if e.stderr else str(e)}"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e)
+        }
