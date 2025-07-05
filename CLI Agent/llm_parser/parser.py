@@ -56,6 +56,23 @@ AVAILABLE_TOOLS = {
 def build_prompt(user_input: str) -> str:
     """Constructs a prompt that guides GPT to generate a valid tool call."""
     tool_docs = json.dumps(AVAILABLE_TOOLS, indent=2)
+
+    additional_guidance = """
+# Additional Guidelines:
+- When users provide ambiguous tool names, map them to actual package names used by Linux package managers like APT.
+- Examples of name resolution:
+  - "java" → "default-jdk"
+  - "node" or "nodejs" → "nodejs"
+  - "python" → "python3"
+  - "gcc" → "gcc"
+  - "vscode" → "code"
+  - "nvim" or "neovim" → "neovim"
+  - "docker" → "docker.io"
+  - "jdk" → "default-jdk"
+- Always assume Ubuntu/Debian (APT) naming unless otherwise specified.
+- Do not include aliases or explanations in the response — only use the mapped name in the `tool_name` field.
+"""
+
     return (
         "You are an AI assistant that converts natural language developer requests into structured tool calls.\n\n"
         f"The tools available are defined below in JSON:\n{tool_docs}\n\n"
@@ -67,10 +84,12 @@ def build_prompt(user_input: str) -> str:
         "- Version check: {'method': 'tool_action_wrapper', 'params': {'task': 'version', 'tool_name': 'python'}}\n"
         "- System info: {'method': 'info://server', 'params': {}}\n"
         "- Generate code: {'method': 'generate_code', 'params': {'description': 'hello world function'}}\n\n"
+        f"{additional_guidance}\n\n"
         "Given the user's instruction, identify the correct tool and return a JSON object with the method and params for a JSON-RPC 2.0 call.\n"
         "ONLY return valid JSON with no extra explanation.\n\n"
         f"User input: \"{user_input}\""
     )
+
 
 def parse_user_command(user_input: str) -> Dict[str, Any]:
     """Parses user input into a structured tool command using OpenAI API."""
