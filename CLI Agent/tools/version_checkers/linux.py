@@ -1,8 +1,7 @@
 import shutil
 import subprocess
 import logging
-from tools.os_utils import get_linux_distro
-
+from tools.utils.os_utils import get_linux_distro
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
