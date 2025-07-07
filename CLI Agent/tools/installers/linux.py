@@ -1,13 +1,17 @@
 import subprocess
 import shutil
-import platform
 import logging
+from tools.utils.os_utils import (
+    get_os_type,
+    get_available_package_manager,
+    is_sudo_available
+)
 from tools.utils.name_resolver import resolve_tool_name
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def check_sudo_access():
+def check_sudo_access() -> bool:
     try:
         result = subprocess.run(["sudo", "-n", "true"], capture_output=True, text=True, timeout=5)
         return result.returncode == 0
@@ -15,91 +19,213 @@ def check_sudo_access():
         logger.error(f"Sudo check failed: {e}")
         return False
 
-def get_package_manager():
-    if shutil.which("apt-get"):
-        return "apt"
-    elif shutil.which("dnf"):
-        return "dnf"
-    elif shutil.which("pacman"):
-        return "pacman"
-    elif shutil.which("apk"):
-        return "apk"
-    return None
-
-def build_install_command(manager, package):
-    if manager == "apt":
-        return [["sudo", "apt-get", "update"], ["sudo", "apt-get", "install", "-y", package]]
-    elif manager == "dnf":
-        return [["sudo", "dnf", "install", "-y", package]]
-    elif manager == "pacman":
-        return [["sudo", "pacman", "-Sy", "--noconfirm", package]]
-    elif manager == "apk":
-        return [["sudo", "apk", "add", package]]
-    return []
-
-def run_commands(command_list):
+def run_commands(command_list: list[list[str]]) -> subprocess.CompletedProcess | None:
     for cmd in command_list:
         logger.info(f"Running: {' '.join(cmd)}")
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
+            logger.warning(f"Command failed: {' '.join(cmd)}\nError: {result.stderr.strip()}")
             return result
-    return result
+    return result  # last command's result
 
-def install_linux_tool(tool, version="latest"):
+def is_tool_installed(tool: str) -> bool:
+    return shutil.which(tool) is not None
+
+def is_snap_available() -> bool:
+    return shutil.which("snap") is not None
+
+def build_install_command(manager: str, package: str) -> list[list[str]]:
+    match manager:
+        case "apt":
+            return [["sudo", "apt-get", "update"], ["sudo", "apt-get", "install", "-y", package]]
+        case "dnf":
+            return [["sudo", "dnf", "install", "-y", package]]
+        case "pacman":
+            return [["sudo", "pacman", "-Sy", "--noconfirm", package]]
+        case "apk":
+            return [["sudo", "apk", "add", package]]
+        case _:
+            return []
+
+def install_with_package_manager(tool: str, resolved_tool: str, manager: str, fallback_msg: str | None = None) -> dict:
+    # Try raw tool install first
+    raw_cmds = build_install_command(manager, tool)
+    raw_result = run_commands(raw_cmds)
+    if raw_result and raw_result.returncode == 0:
+        return {
+            "status": "success",
+            "message": f"Installed '{tool}' via {manager}.",
+            "stdout": raw_result.stdout.strip(),
+            "warnings": raw_result.stderr.strip() or None
+        }
+
+    logger.warning(f"Raw install failed for '{tool}': {raw_result.stderr.strip() if raw_result else 'Unknown error'}")
+
+    # Try resolved tool install if different
+    if resolved_tool != tool:
+        resolved_cmds = build_install_command(manager, resolved_tool)
+        resolved_result = run_commands(resolved_cmds)
+        if resolved_result and resolved_result.returncode == 0:
+            message = f"Installed '{resolved_tool}' via {manager}."
+            if fallback_msg:
+                message = f"{fallback_msg}\n{message}"
+            return {
+                "status": "success",
+                "message": message,
+                "stdout": resolved_result.stdout.strip(),
+                "warnings": resolved_result.stderr.strip() or None
+            }
+
+        logger.warning(f"Resolved install failed for '{resolved_tool}': {resolved_result.stderr.strip() if resolved_result else 'Unknown error'}")
+
+    return None
+
+def build_snap_install_command(package: str, classic=False) -> list[list[str]]:
+    cmd = ["sudo", "snap", "install", package]
+    if classic:
+        cmd.append("--classic")
+    return [cmd]
+
+def install_with_snap(resolved_tool: str, classic_snap: bool = False, fallback_msg: str | None = None) -> dict:
+    if not is_snap_available():
+        # Attempt to install snapd if possible
+        snap_install_result = ensure_package_manager_installed("snap")
+        if not snap_install_result:
+            return {"status": "error", "message": "Snap is not installed and automatic installation failed."}
+
+    snap_cmd = build_snap_install_command(resolved_tool, classic=classic_snap)
+    snap_result = run_commands(snap_cmd)
+
+    if snap_result and snap_result.returncode == 0:
+        message = f"Installed '{resolved_tool}' via snap."
+        if fallback_msg:
+            message = f"{fallback_msg}\n{message}"
+        return {
+            "status": "success",
+            "message": message,
+            "stdout": snap_result.stdout.strip(),
+            "warnings": snap_result.stderr.strip() or None
+        }
+
+    return {
+        "status": "error",
+        "message": f"Snap install failed for '{resolved_tool}'.",
+        "stderr": snap_result.stderr.strip() if snap_result else None
+    }
+
+def ensure_package_manager_installed(manager: str) -> bool:
+    """
+    Attempt to install or enable the given package manager if missing.
+
+    Returns True if package manager is available after this call, False otherwise.
+    """
+
+    if shutil.which(manager):
+        logger.info(f"Package manager '{manager}' is already installed.")
+        return True
+
+    logger.info(f"Package manager '{manager}' is missing. Attempting to install it...")
+
+    os_type = get_os_type()
+    try:
+        if os_type == "linux":
+            if manager == "apt":
+                # apt should be preinstalled in most distros, can't auto-install it easily
+                logger.error("APT is missing. Please install it manually.")
+                return False
+
+            if manager == "dnf":
+                # On Fedora based, dnf is standard, no easy install
+                logger.error("DNF is missing. Please install it manually.")
+                return False
+
+            if manager == "pacman":
+                logger.error("Pacman is missing. Please install it manually.")
+                return False
+
+            if manager == "apk":
+                logger.error("APK is missing. Please install it manually.")
+                return False
+
+            if manager == "snap":
+                # Try installing snapd for snap support
+                if shutil.which("apt-get"):
+                    result = subprocess.run(
+                        ["sudo", "apt-get", "update"],
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                    )
+                    result = subprocess.run(
+                        ["sudo", "apt-get", "install", "-y", "snapd"],
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                    )
+                    if result.returncode == 0:
+                        logger.info("snapd installed successfully.")
+                        return True
+                logger.error("Failed to install snapd. Please install it manually.")
+                return False
+
+        elif os_type == "mac":
+            if manager == "brew":
+                logger.error("Homebrew is missing. Please install it manually from https://brew.sh/")
+                return False
+
+        elif os_type == "windows":
+            if manager == "winget":
+                logger.error("winget is missing. Please install it manually from Microsoft Store.")
+                return False
+
+        else:
+            logger.error(f"Unsupported OS for package manager installation: {os_type}")
+            return False
+
+    except Exception as e:
+        logger.error(f"Exception while installing package manager '{manager}': {e}")
+        return False
+
+    return False
+
+def install_linux_tool(tool: str, version: str = "latest") -> dict:
+    if not is_sudo_available():
+        return {
+            "status": "error",
+            "message": "sudo command is not available. Please install sudo or run as root."
+        }
+
     if not check_sudo_access():
         return {
             "status": "error",
             "message": "sudo access required. Run: `sudo -v` and try again."
         }
 
-    package_manager = get_package_manager()
-    if not package_manager:
-        return {"status": "error", "message": "Unsupported Linux package manager."}
-
-    # --- Step 1: Try installing using the raw tool name ---
-    raw_cmds = build_install_command(package_manager, tool)
-    result_raw = run_commands(raw_cmds)
-
-    if result_raw and result_raw.returncode == 0:
+    if is_tool_installed(tool):
         return {
-            "status": "success",
-            "message": f"Installed '{tool}' successfully.",
-            "stdout": result_raw.stdout.strip(),
-            "warnings": result_raw.stderr.strip() or None
+            "status": "skipped",
+            "message": f"'{tool}' is already installed on the system."
         }
 
-    logger.warning(f"Raw install failed for '{tool}': {result_raw.stderr.strip()}")
-
-    # --- Step 2: Resolve proper name and retry ---
-    os_type = platform.system().lower()
+    os_type = get_os_type()
+    manager = get_available_package_manager()
     resolved = resolve_tool_name(tool, os_type, version)
+
     resolved_tool = resolved.get("name", tool)
     fallback_msg = resolved.get("fallback")
+    classic_snap = resolved.get("classic_snap", False)
 
-    if resolved_tool == tool:
-        # Same name, no point in retrying
-        return {
-            "status": "error",
-            "message": f"Installation failed for '{tool}'. Error: {result_raw.stderr.strip() or result_raw.stdout.strip()}"
-        }
+    if manager and manager != "unknown":
+        if not ensure_package_manager_installed(manager):
+            return {
+                "status": "error",
+                "message": f"Required package manager '{manager}' is not available and could not be installed automatically. Please install it manually."
+            }
 
-    logger.info(f"Trying resolved name: {resolved_tool}")
-    resolved_cmds = build_install_command(package_manager, resolved_tool)
-    result_resolved = run_commands(resolved_cmds)
+        result = install_with_package_manager(tool, resolved_tool, manager, fallback_msg)
+        if result:
+            return result
 
-    if result_resolved and result_resolved.returncode == 0:
-        message = f"Installed '{resolved_tool}' successfully."
-        if fallback_msg:
-            message = f"{fallback_msg}\n{message}"
-        return {
-            "status": "success",
-            "message": message,
-            "stdout": result_resolved.stdout.strip(),
-            "warnings": result_resolved.stderr.strip() or None
-        }
-
-    return {
-        "status": "error",
-        "message": f"Installation failed for both '{tool}' and resolved name '{resolved_tool}'.",
-        "stderr": result_resolved.stderr.strip() if result_resolved else None
-    }
+    # Snap fallback
+    snap_result = install_with_snap(resolved_tool, classic_snap, fallback_msg)
+    return snap_result

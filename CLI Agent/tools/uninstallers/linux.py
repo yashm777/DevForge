@@ -2,86 +2,106 @@ import subprocess
 import shutil
 import logging
 from tools.utils.name_resolver import resolve_tool_name
+from tools.utils.os_utils import get_available_package_manager, is_sudo_available, is_snap_available
 
-logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-
-def check_sudo_access():
+def run_uninstall_cmd(tool_name: str, manager: str) -> subprocess.CompletedProcess | None:
     try:
-        result = subprocess.run(["sudo", "-n", "true"], capture_output=True, text=True, timeout=5)
-        return result.returncode == 0
-    except Exception as e:
-        logging.error(f"Sudo check failed: {e}")
-        return False
-
-
-def run_uninstall_cmd(tool_name):
-    try:
-        if shutil.which("apt-get"):
-            cmd = ["sudo", "apt-get", "remove", "-y", tool_name]
-        elif shutil.which("dnf"):
-            cmd = ["sudo", "dnf", "remove", "-y", tool_name]
-        elif shutil.which("pacman"):
-            cmd = ["sudo", "pacman", "-R", "--noconfirm", tool_name]
-        elif shutil.which("apk"):
-            cmd = ["sudo", "apk", "del", tool_name]
-        else:
-            logging.error("No supported package manager found.")
+        cmd_map = {
+            "apt": ["sudo", "apt-get", "remove", "-y", tool_name],
+            "dnf": ["sudo", "dnf", "remove", "-y", tool_name],
+            "pacman": ["sudo", "pacman", "-R", "--noconfirm", tool_name],
+            "apk": ["sudo", "apk", "del", tool_name],
+        }
+        cmd = cmd_map.get(manager)
+        if not cmd:
+            logger.error(f"Unsupported package manager: {manager}")
             return None
-        
-        logging.info(f"Running uninstall command: {' '.join(cmd)}")
+
+        logger.info(f"Running uninstall command: {' '.join(cmd)}")
         return subprocess.run(cmd, capture_output=True, text=True, timeout=30)
 
     except subprocess.TimeoutExpired:
-        logging.error(f"Uninstallation timed out for {tool_name}")
+        logger.error(f"Uninstallation timed out for {tool_name}")
         return None
     except Exception as e:
-        logging.error(f"Uninstallation failed for {tool_name}: {e}")
+        logger.error(f"Uninstallation failed for {tool_name}: {e}")
         return None
 
+def uninstall_with_snap(tool_name: str) -> subprocess.CompletedProcess | None:
+    try:
+        cmd = ["sudo", "snap", "remove", tool_name]
+        logger.info(f"Trying snap uninstall: {' '.join(cmd)}")
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    except Exception as e:
+        logger.error(f"Snap uninstall failed for {tool_name}: {e}")
+        return None
 
-def uninstall_linux_tool(tool, version="latest"):
-    if not check_sudo_access():
+def uninstall_linux_tool(tool: str, version: str = "latest") -> dict:
+    if not is_sudo_available():
         return {
             "status": "error",
-            "message": "Sudo access is required. Run: `sudo -v` before trying again."
+            "message": "Sudo access required. Please run `sudo -v` and try again."
         }
 
-    # --- Step 1: Try uninstalling using the raw name ---
-    first_try = run_uninstall_cmd(tool)
-    if first_try and first_try.returncode == 0:
-        logging.info(f"Successfully uninstalled '{tool}' using raw name.")
+    pkg_manager = get_available_package_manager()
+    if pkg_manager == "unknown":
+        return {
+            "status": "error",
+            "message": "No supported package manager found on this system."
+        }
+
+    # Try uninstall raw tool name first
+    result = run_uninstall_cmd(tool, pkg_manager)
+    if result and result.returncode == 0:
+        logger.info(f"Successfully uninstalled '{tool}' using package manager '{pkg_manager}'.")
         return {
             "status": "success",
             "message": f"Uninstalled '{tool}' successfully.",
-            "stdout": first_try.stdout.strip()
+            "stdout": result.stdout.strip()
         }
 
-    # --- Step 2: Try resolved tool name ---
+    # Try resolved tool name
     resolved = resolve_tool_name(tool, "linux", version)
     resolved_tool = resolved.get("name", tool)
     fallback_msg = resolved.get("fallback")
 
     if resolved_tool != tool:
-        logging.info(f"Trying with resolved tool name: {resolved_tool}")
-        second_try = run_uninstall_cmd(resolved_tool)
-        if second_try and second_try.returncode == 0:
-            logging.info(f"Successfully uninstalled '{resolved_tool}' using resolved name.")
+        result = run_uninstall_cmd(resolved_tool, pkg_manager)
+        if result and result.returncode == 0:
+            msg = f"Uninstalled '{resolved_tool}' successfully."
+            if fallback_msg:
+                msg += f"\nNote: {fallback_msg}"
+            logger.info(msg)
             return {
                 "status": "success",
-                "message": f"Uninstalled '{resolved_tool}' successfully." + (f"\nNote: {fallback_msg}" if fallback_msg else ""),
-                "stdout": second_try.stdout.strip()
+                "message": msg,
+                "stdout": result.stdout.strip()
             }
 
-    # --- Step 3: Failure ---
-    error_msg = (
-        first_try.stderr.strip() if first_try and first_try.stderr
-        else "Unknown error or unsupported package manager."
-    )
-    logging.error(f"Uninstallation failed for '{tool}' and '{resolved_tool}'. Error: {error_msg}")
+    # If both fail, try snap uninstall if snap is available
+    if is_snap_available():
+        snap_result = uninstall_with_snap(resolved_tool)
+        if snap_result and snap_result.returncode == 0:
+            logger.info(f"Successfully uninstalled '{resolved_tool}' via snap.")
+            return {
+                "status": "success",
+                "message": f"Uninstalled '{resolved_tool}' successfully via snap.",
+                "stdout": snap_result.stdout.strip()
+            }
+
+    # All uninstall attempts failed
+    error_detail = ""
+    if result:
+        error_detail = result.stderr.strip() or result.stdout.strip()
+    else:
+        error_detail = "Uninstallation commands did not execute successfully."
+
+    logger.error(f"Uninstallation failed for '{tool}' and '{resolved_tool}'. Details: {error_detail}")
 
     return {
         "status": "error",
-        "message": f"Uninstallation failed for both '{tool}' and resolved name '{resolved_tool}'.",
-        "stderr": error_msg
+        "message": f"Failed to uninstall '{tool}' and '{resolved_tool}'.",
+        "stderr": error_detail
     }
