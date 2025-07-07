@@ -23,7 +23,7 @@ def run_commands(command_list: list[list[str]]) -> subprocess.CompletedProcess |
     for cmd in command_list:
         logger.info(f"Running: {' '.join(cmd)}")
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         except subprocess.TimeoutExpired:
             logger.error(f"Command timed out: {' '.join(cmd)}")
             return None
