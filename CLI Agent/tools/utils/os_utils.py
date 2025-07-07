@@ -65,3 +65,9 @@ def is_sudo_available() -> bool:
     Check if the system supports sudo (non-interactive).
     """
     return shutil.which("sudo") is not None
+
+def is_snap_available() -> bool:
+    """
+    Check if 'snap' package manager is installed and available on the system.
+    """
+    return shutil.which("snap") is not None
