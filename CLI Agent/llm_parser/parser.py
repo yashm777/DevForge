@@ -54,7 +54,7 @@ AVAILABLE_TOOLS = {
 }
 
 def build_prompt(user_input: str) -> str:
-    """Constructs a prompt that guides GPT to generate a valid tool call."""
+    """Constructs a prompt that guides GPT to generate a valid tool call, with extended guidance."""
     tool_docs = json.dumps(AVAILABLE_TOOLS, indent=2)
 
     additional_guidance = """
@@ -69,14 +69,27 @@ def build_prompt(user_input: str) -> str:
   - "nvim" or "neovim" → "neovim"
   - "docker" → "docker.io"
   - "jdk" → "default-jdk"
-- Always assume Ubuntu/Debian (APT) naming unless otherwise specified.
-- Do not include aliases or explanations in the response — only use the mapped name in the `tool_name` field.
+  - "intellij" → "intellij-idea-community"
+  - "pycharm" → "pycharm-community"
+  - "eclipse" → "eclipse"
+  - "git" → "git"
+  - "maven" → "maven"
+  - "gradle" → "gradle"
+- Always return the base package name commonly used on Ubuntu/Debian systems; do not include OS-specific variants.
+- For version-specific installs, append the version number as part of the package name when specified, for example:
+  - "java 11" → "openjdk-11-jdk"
+  - "python 3.9" → "python3.9"
+- If version is not specified or is "latest", use the default package name.
+- Return only a single valid JSON object with keys "method" and "params".
+- Do NOT include any explanations, aliases, markdown, or code blocks in the response.
+- If the input is ambiguous or unrecognized, return a JSON object with an "error" field explaining the issue.
 """
 
     return (
         "You are an AI assistant that converts natural language developer requests into structured tool calls.\n\n"
         f"The tools available are defined below in JSON:\n{tool_docs}\n\n"
-        "IMPORTANT: For install, uninstall, update, and version actions, use method 'tool_action_wrapper' with params containing 'task' and 'tool_name'.\n"
+        "IMPORTANT: For install, uninstall, update, and version actions, use method 'tool_action_wrapper' "
+        "with params containing 'task' and 'tool_name'.\n"
         "For system info, use method 'info://server' with empty params.\n"
         "For code generation, use method 'generate_code' with 'description' param.\n\n"
         "Examples:\n"
@@ -89,6 +102,7 @@ def build_prompt(user_input: str) -> str:
         "ONLY return valid JSON with no extra explanation.\n\n"
         f"User input: \"{user_input}\""
     )
+
 
 
 def parse_user_command(user_input: str) -> Dict[str, Any]:
