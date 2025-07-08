@@ -80,9 +80,10 @@ def build_prompt(user_input: str) -> str:
   - "java 11" → "openjdk-11-jdk"
   - "python 3.9" → "python3.9"
 - If version is not specified or is "latest", use the default package name.
+- If the package is not available via standard package managers and appears to be a known tool, provide a field called "manual_url" with the official website for manual installation.
+- If the tool is unrecognized or seems to be random/nonexistent (like "mercedez benz"), return a JSON object with an "error" field.
 - Return only a single valid JSON object with keys "method" and "params".
 - Do NOT include any explanations, aliases, markdown, or code blocks in the response.
-- If the input is ambiguous or unrecognized, return a JSON object with an "error" field explaining the issue.
 """
 
     return (
@@ -103,23 +104,19 @@ def build_prompt(user_input: str) -> str:
         f"User input: \"{user_input}\""
     )
 
-
-
 def parse_user_command(user_input: str) -> Dict[str, Any]:
     """Parses user input into a structured tool command using OpenAI API."""
-    
-    # Check for OpenAI API key - required for all parsing
+
     if not OPENAI_API_KEY:
         return {
             "error": "OpenAI API key not set. Please set OPENAI_API_KEY environment variable.",
             "fallback": "Try using specific commands like 'install docker' or 'check version nodejs'"
         }
-    
-    # Use OpenAI for parsing
+
     try:
         client = openai.OpenAI(api_key=OPENAI_API_KEY)
         prompt = build_prompt(user_input)
-        
+
         logging.debug("Sending prompt to OpenAI...")
         response = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -134,18 +131,19 @@ def parse_user_command(user_input: str) -> Dict[str, Any]:
         raw_response = response.choices[0].message.content.strip()
         logging.debug(f"Raw response: {raw_response}")
 
-        # Clean up the response
         if raw_response.startswith("```json"):
             raw_response = raw_response[7:]
         elif raw_response.startswith("```"):
             raw_response = raw_response[3:]
         if raw_response.endswith("```"):
             raw_response = raw_response[:-3].strip()
+
         try:
             return json.loads(raw_response)
         except Exception as e:
             logging.error(f"Failed to parse JSON from OpenAI response: {e}\nRaw response: {raw_response}")
             return {"error": "Failed to parse JSON from OpenAI response.", "raw_response": raw_response}
+
     except Exception as e:
         logging.error(f"OpenAI API call failed: {e}")
         return {"error": f"OpenAI API call failed: {e}"}
@@ -159,3 +157,9 @@ def get_command_suggestions() -> list:
             "description": meta.get("description", "")
         })
     return suggestions
+
+def guess_tool_website(tool_name: str) -> str:
+    known_ui_tools = {"cursor", "intellij", "eclipse", "pycharm", "vscode", "android studio"}
+    if tool_name.lower() in known_ui_tools:
+        return f"https://www.google.com/search?q=download+{tool_name.replace(' ', '+')}+official"
+    return f"https://github.com/search?q={tool_name.replace(' ', '+')}"
