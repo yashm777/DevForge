@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
@@ -158,8 +159,43 @@ def get_command_suggestions() -> list:
         })
     return suggestions
 
-def guess_tool_website(tool_name: str) -> str:
-    known_ui_tools = {"cursor", "intellij", "eclipse", "pycharm", "vscode", "android studio"}
-    if tool_name.lower() in known_ui_tools:
+def generate_smart_tool_url(tool_name: str) -> str:
+    if not OPENAI_API_KEY:
         return f"https://www.google.com/search?q=download+{tool_name.replace(' ', '+')}+official"
-    return f"https://github.com/search?q={tool_name.replace(' ', '+')}"
+
+    try:
+        client = openai.OpenAI(api_key=OPENAI_API_KEY)
+        prompt = (
+            f"A developer is trying to find the official website or trusted installation link for a tool named '{tool_name}'. "
+            "Return only the best single URL (if known), ideally the official site or trusted repository. "
+            "If the tool name is ambiguous, uncommon, or doesn't exist (e.g., 'mercedez benz' or gibberish), "
+            "respond with a clear message that it's unrecognized. Do not include code blocks or markdown formatting. "
+            "Just respond with either a URL or an error message."
+        )
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a developer assistant helping find trusted URLs."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2,
+            max_tokens=100
+        )
+
+        reply = response.choices[0].message.content.strip()
+        # Return the URL directly if it's valid
+        if reply.lower().startswith("http"):
+            return reply
+        return f"No trusted download link found: {reply}"
+
+    except Exception as e:
+        logger.error(f"Smart tool URL generation failed: {e}")
+        return f"https://www.google.com/search?q=download+{tool_name.replace(' ', '+')}+official"
+
+
+# def guess_tool_website(tool_name: str) -> str:
+#     known_ui_tools = {"cursor", "intellij", "eclipse", "pycharm", "vscode", "android studio"}
+#     if tool_name.lower() in known_ui_tools:
+#         return f"https://www.google.com/search?q=download+{tool_name.replace(' ', '+')}+official"
+#     return f"https://github.com/search?q={tool_name.replace(' ', '+')}"
