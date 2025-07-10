@@ -20,7 +20,7 @@ def run_uninstall_cmd(tool_name: str, manager: str) -> subprocess.CompletedProce
             return None
 
         logger.info(f"Running uninstall command: {' '.join(cmd)}")
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        return subprocess.run(cmd, capture_output=True, text=True)
 
     except subprocess.TimeoutExpired:
         logger.error(f"Uninstallation timed out for {tool_name}")
@@ -33,7 +33,7 @@ def uninstall_with_snap(tool_name: str) -> subprocess.CompletedProcess | None:
     try:
         cmd = ["sudo", "snap", "remove", tool_name]
         logger.info(f"Trying snap uninstall: {' '.join(cmd)}")
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        return subprocess.run(cmd, capture_output=True, text=True)
     except Exception as e:
         logger.error(f"Snap uninstall failed for {tool_name}: {e}")
         return None
