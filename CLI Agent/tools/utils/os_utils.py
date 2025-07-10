@@ -78,7 +78,7 @@ def check_sudo_access() -> bool:
     """
     import subprocess
     try:
-        result = subprocess.run(["sudo", "-n", "true"], capture_output=True, text=True, timeout=600)
+        result = subprocess.run(["sudo", "-n", "true"], capture_output=True, text=True)
         return result.returncode == 0
     except Exception:
         return False
