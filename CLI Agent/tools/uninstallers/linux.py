@@ -22,9 +22,6 @@ def run_uninstall_cmd(tool_name: str, manager: str) -> subprocess.CompletedProce
         logger.info(f"Running uninstall command: {' '.join(cmd)}")
         return subprocess.run(cmd, capture_output=True, text=True)
 
-    except subprocess.TimeoutExpired:
-        logger.error(f"Uninstallation timed out for {tool_name}")
-        return None
     except Exception as e:
         logger.error(f"Uninstallation failed for {tool_name}: {e}")
         return None

@@ -42,12 +42,12 @@ def build_update_commands(distro, package_name, tool_name):
     else:
         return []
 
-def run_commands(commands, timeout=60):
+def run_commands(commands):
     """Run list of commands sequentially, stop on failure."""
     for cmd in commands:
         logger.info(f"Running command: {' '.join(cmd)}")
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+            result = subprocess.run(cmd, capture_output=True, text=True)
         except subprocess.TimeoutExpired:
             logger.error(f"Command timed out: {' '.join(cmd)}")
             return None
@@ -112,7 +112,7 @@ def handle_tool(tool_name: str, version: str = "latest") -> dict:
         try:
             snap_cmd = ["sudo", "snap", "refresh", resolved_name]
             logger.info(f"Trying snap update: {' '.join(snap_cmd)}")
-            snap_result = subprocess.run(snap_cmd, capture_output=True, text=True, timeout=60)
+            snap_result = subprocess.run(snap_cmd, capture_output=True, text=True)
             if snap_result.returncode == 0:
                 msg = f"{resolved_name} updated successfully via snap."
                 if fallback_msg:
@@ -131,12 +131,6 @@ def handle_tool(tool_name: str, version: str = "latest") -> dict:
                     "message": f"Failed to update {resolved_name} via snap.",
                     "details": snap_result.stderr.strip()
                 }
-        except subprocess.TimeoutExpired:
-            logger.error(f"Snap update timed out for {resolved_name}")
-            return {
-                "status": "error",
-                "message": f"Snap update timed out for {resolved_name}."
-            }
         except Exception as e:
             logger.error(f"Unexpected error during snap update: {e}")
             return {
