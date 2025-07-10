@@ -139,9 +139,6 @@ def run_commands(command_list: list[list[str]]) -> subprocess.CompletedProcess |
             if result.returncode != 0:
                 logging.warning(f"Command failed: {' '.join(cmd)}\nError: {result.stderr.strip()}")
                 return result
-        except subprocess.TimeoutExpired:
-            logging.error(f"Command timed out: {' '.join(cmd)}")
-            return None
         except Exception as e:
             logging.error(f"Error while running command {' '.join(cmd)}: {e}")
             return None
