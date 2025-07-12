@@ -7,47 +7,6 @@ from tools.utils.name_resolver import resolve_tool_name
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def check_java_versions_via_update_alternatives():
-    try:
-        result = subprocess.run(
-            ["update-alternatives", "--list", "java"],
-            capture_output=True, text=True, timeout=5
-        )
-        if result.returncode != 0 or not result.stdout.strip():
-            return None
-        
-        java_paths = result.stdout.strip().splitlines()
-        versions = []
-        active_path_result = subprocess.run(
-            ["update-alternatives", "--query", "java"],
-            capture_output=True, text=True, timeout=5
-        )
-        active_path = None
-        for line in active_path_result.stdout.splitlines():
-            if line.startswith("Value:"):
-                active_path = line.split(":", 1)[1].strip()
-                break
-
-        for path in java_paths:
-            try:
-                ver_result = subprocess.run(
-                    [path, "-version"],
-                    capture_output=True, text=True, timeout=5
-                )
-                if ver_result.returncode == 0:
-                    version_line = ver_result.stderr.splitlines()[0]
-                    versions.append({
-                        "path": path,
-                        "version_info": version_line,
-                        "is_active": (path == active_path)
-                    })
-            except Exception as e:
-                logger.debug(f"Failed to get version for {path}: {e}")
-        return versions
-    except Exception as e:
-        logger.debug(f"update-alternatives check failed: {e}")
-        return None
-
 def check_snap_version(tool_name):
     if not is_snap_available():
         return None
@@ -79,37 +38,7 @@ def check_snap_version(tool_name):
 
 def check_version(tool_name: str, version: str = "latest") -> dict:
     try:
-        # Special case for Java via update-alternatives
-        if tool_name.lower() in ["java", "jdk", "default-jdk"]:
-            java_versions = check_java_versions_via_update_alternatives()
-            if java_versions:
-                versions_summary = []
-                for v in java_versions:
-                    mark = "(active)" if v["is_active"] else ""
-                    versions_summary.append(f"{v['version_info']} at {v['path']} {mark}")
-                return {
-                    "status": "success",
-                    "message": "Java versions found:\n" + "\n".join(versions_summary),
-                    "versions": java_versions
-                }
-            else:
-                distro = get_linux_distro()
-                if distro in ("debian", "ubuntu") and shutil.which("dpkg"):
-                    result = subprocess.run(["dpkg", "-l", tool_name], capture_output=True, text=True, timeout=5)
-                    if result.returncode == 0 and tool_name in result.stdout:
-                        lines = result.stdout.strip().splitlines()
-                        for line in lines:
-                            if line.startswith('ii') and tool_name in line:
-                                parts = line.split()
-                                if len(parts) >= 3:
-                                    return {
-                                        "status": "success",
-                                        "message": f"Version info for {tool_name} (APT)",
-                                        "version": parts[2],
-                                        "source": "apt/dpkg"
-                                    }
-
-        # If not installed on PATH, check snap
+        # Check if tool executable is available in PATH
         if shutil.which(tool_name) is None:
             resolved = resolve_tool_name(tool_name, "linux", version)
             snap_name = resolved.get("name")
@@ -127,7 +56,7 @@ def check_version(tool_name: str, version: str = "latest") -> dict:
                     "message": f"'{tool_name}' is not installed or not found in PATH or snap."
                 }
 
-        # Try common version commands
+        # Try common version commands dynamically
         version_commands = [
             [tool_name, "--version"],
             [tool_name, "-v"],
@@ -138,18 +67,19 @@ def check_version(tool_name: str, version: str = "latest") -> dict:
         for cmd in version_commands:
             try:
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-                if result.returncode == 0 and result.stdout.strip():
+                output = (result.stdout + result.stderr).strip()
+                if result.returncode == 0 and output:
                     return {
                         "status": "success",
                         "message": f"Version information for {tool_name}",
-                        "version": result.stdout.strip(),
+                        "version": output,
                         "command": " ".join(cmd)
                     }
             except Exception as e:
                 logger.debug(f"Command {cmd} failed: {e}")
                 continue
 
-        # Distro-specific version queries fallback
+        # Distro-specific package manager checks fallback
         distro = get_linux_distro()
         if distro in ("debian", "ubuntu") and shutil.which("dpkg"):
             try:
