@@ -143,3 +143,69 @@ def run_commands(command_list: list[list[str]]) -> subprocess.CompletedProcess |
             logging.error(f"Error while running command {' '.join(cmd)}: {e}")
             return None
     return result  # return last success/failure result
+
+def get_related_packages(tool_name: str, pkg_manager: str) -> list[str]:
+    """
+    Returns a list of package names related to the given tool by querying installed packages.
+    Useful for tools like Java which have multiple components (jdk, jre, headless, etc.)
+    """
+    tool_name = tool_name.lower()
+    keywords = []
+
+    if tool_name == "java":
+        keywords = ["openjdk", "default-jdk", "default-jre", "jdk", "jre"]
+    elif tool_name in ("c++", "cpp", "g++"):
+        keywords = ["g++"]
+    else:
+        keywords = [tool_name]
+
+    try:
+        if pkg_manager == "apt" and shutil.which("dpkg"):
+            result = subprocess.run(
+                ["dpkg", "-l"], capture_output=True, text=True, timeout=5
+            )
+            lines = result.stdout.strip().splitlines()
+            installed_packages = [
+                line.split()[1]
+                for line in lines
+                if line.startswith("ii") and any(k in line for k in keywords)
+            ]
+            return installed_packages
+
+        elif pkg_manager == "dnf":
+            result = subprocess.run(
+                ["dnf", "list", "installed"], capture_output=True, text=True, timeout=5
+            )
+            return [
+                line.split()[0]
+                for line in result.stdout.splitlines()
+                if any(k in line for k in keywords)
+            ]
+
+        elif pkg_manager == "pacman":
+            result = subprocess.run(
+                ["pacman", "-Q"], capture_output=True, text=True, timeout=5
+            )
+            return [
+                line.split()[0]
+                for line in result.stdout.splitlines()
+                if any(k in line for k in keywords)
+            ]
+
+        elif pkg_manager == "apk":
+            result = subprocess.run(
+                ["apk", "info"], capture_output=True, text=True, timeout=5
+            )
+            return [
+                line.strip()
+                for line in result.stdout.splitlines()
+                if any(k in line for k in keywords)
+            ]
+
+        else:
+            logging.warning(f"No implementation for package listing with: {pkg_manager}")
+
+    except Exception as e:
+        logging.error(f"Failed to list packages for '{tool_name}': {e}")
+
+    return []
