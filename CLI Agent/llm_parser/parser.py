@@ -60,28 +60,24 @@ def build_prompt(user_input: str) -> str:
 
     additional_guidance = """
 # Additional Guidelines:
-- When users provide ambiguous tool names, map them to actual package names used by Linux package managers like APT.
+- Resolve user-provided tool names to their common, canonical names. Do not use platform-specific package names (like from apt or yum).
+- The goal is to identify the tool itself, not the package that provides it. The backend will handle platform-specific installation.
 - Examples of name resolution:
-  - "java" → "default-jdk"
-  - "node" or "nodejs" → "nodejs"
-  - "python" → "python3"
-  - "gcc" → "gcc"
-  - "vscode" → "code"
-  - "nvim" or "neovim" → "neovim"
-  - "docker" → "docker.io"
-  - "jdk" → "default-jdk"
-  - "intellij" → "intellij-idea-community"
-  - "pycharm" → "pycharm-community"
-  - "eclipse" → "eclipse"
-  - "git" → "git"
-  - "maven" → "maven"
-  - "gradle" → "gradle"
-- Always return the base package name commonly used on Ubuntu/Debian systems; do not include OS-specific variants.
-- For version-specific installs, append the version number as part of the package name when specified, for example:
-  - "java 11" → "openjdk-11-jdk"
-  - "python 3.9" → "python3.9"
-- If version is not specified or is "latest", use the default package name.
-- If the package is not available via standard package managers and appears to be a known tool, provide a field called "manual_url" with the official website for manual installation.
+  - "java" or "jdk" -> "java"
+  - "node" or "nodejs" -> "node"
+  - "python" or "python3" -> "python"
+  - "pip" or "pip3" -> "pip"
+  - "vscode" -> "vscode"
+  - "nvim" or "neovim" -> "neovim"
+  - "docker" -> "docker"
+  - "intellij" -> "intellij-idea"
+  - "pycharm" -> "pycharm"
+  - "git" -> "git"
+  - "maven" -> "maven"
+  - "gradle" -> "gradle"
+- For version-specific requests, include the version in the 'version' parameter, do not modify the tool_name.
+  - "java 11" -> tool_name: "java", version: "11"
+  - "python 3.9" -> tool_name: "python", version: "3.9"
 - If the tool is unrecognized or seems to be random/nonexistent (like "mercedez benz"), return a JSON object with an "error" field.
 - Return only a single valid JSON object with keys "method" and "params".
 - Do NOT include any explanations, aliases, markdown, or code blocks in the response.
