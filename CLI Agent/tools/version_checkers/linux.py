@@ -18,11 +18,11 @@ def check_snap_version(tool_name):
         )
         if snap_list.returncode != 0 or "error:" in snap_list.stderr.lower():
             return None
-        
+
         lines = snap_list.stdout.strip().splitlines()
         if len(lines) < 2:
             return None
-        
+
         parts = lines[1].split()
         if len(parts) < 2:
             return None
@@ -38,54 +38,49 @@ def check_snap_version(tool_name):
 
 def check_version(tool_name: str, version: str = "latest") -> dict:
     try:
-        # Check if tool executable is available in PATH
-        if shutil.which(tool_name) is None:
-            resolved = resolve_tool_name(tool_name, "linux", version)
-            snap_name = resolved.get("name")
-            snap_version = check_snap_version(snap_name)
-            if snap_version:
-                return {
-                    "status": "success",
-                    "message": f"{tool_name} found as snap package '{snap_name}' version {snap_version['version']}",
-                    "version": snap_version["version"],
-                    "source": "snap"
-                }
-            else:
-                return {
-                    "status": "error",
-                    "message": f"'{tool_name}' is not installed or not found in PATH or snap."
-                }
+        resolved = resolve_tool_name(tool_name, "linux", version)
+        resolved_name = resolved.get("name", tool_name)
 
-        # Try common version commands dynamically
-        version_commands = [
-            [tool_name, "--version"],
-            [tool_name, "-v"],
-            [tool_name, "-V"],
-            [tool_name, "version"]
-        ]
+        # First check using shutil.which
+        if shutil.which(resolved_name):
+            version_commands = [
+                [resolved_name, "--version"],
+                [resolved_name, "-v"],
+                [resolved_name, "-V"],
+                [resolved_name, "version"]
+            ]
+            for cmd in version_commands:
+                try:
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+                    output = (result.stdout + result.stderr).strip()
+                    if result.returncode == 0 and output:
+                        return {
+                            "status": "success",
+                            "message": f"Version information for {tool_name}",
+                            "version": output,
+                            "command": " ".join(cmd),
+                            "source": "executable"
+                        }
+                except Exception as e:
+                    logger.debug(f"Command {cmd} failed: {e}")
 
-        for cmd in version_commands:
-            try:
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-                output = (result.stdout + result.stderr).strip()
-                if result.returncode == 0 and output:
-                    return {
-                        "status": "success",
-                        "message": f"Version information for {tool_name}",
-                        "version": output,
-                        "command": " ".join(cmd)
-                    }
-            except Exception as e:
-                logger.debug(f"Command {cmd} failed: {e}")
-                continue
+        # Check snap
+        snap_version = check_snap_version(resolved_name)
+        if snap_version:
+            return {
+                "status": "success",
+                "message": f"{tool_name} found as snap package '{resolved_name}' version {snap_version['version']}",
+                "version": snap_version["version"],
+                "source": "snap"
+            }
 
-        # Distro-specific package manager checks fallback
+        # Distro-specific package manager fallback
         distro = get_linux_distro()
         if distro in ("debian", "ubuntu") and shutil.which("dpkg"):
             try:
-                result = subprocess.run(["dpkg", "-l", tool_name], capture_output=True, text=True, timeout=5)
+                result = subprocess.run(["dpkg", "-l", resolved_name], capture_output=True, text=True, timeout=5)
                 for line in result.stdout.strip().splitlines():
-                    if line.startswith('ii') and tool_name in line:
+                    if line.startswith('ii') and resolved_name in line:
                         parts = line.split()
                         if len(parts) >= 3:
                             return {
@@ -99,7 +94,7 @@ def check_version(tool_name: str, version: str = "latest") -> dict:
 
         elif distro in ("fedora", "centos", "rhel") and shutil.which("rpm"):
             try:
-                result = subprocess.run(["rpm", "-q", tool_name], capture_output=True, text=True, timeout=5)
+                result = subprocess.run(["rpm", "-q", resolved_name], capture_output=True, text=True, timeout=5)
                 if result.returncode == 0:
                     return {
                         "status": "success",
@@ -112,7 +107,7 @@ def check_version(tool_name: str, version: str = "latest") -> dict:
 
         elif distro in ("arch", "manjaro") and shutil.which("pacman"):
             try:
-                result = subprocess.run(["pacman", "-Q", tool_name], capture_output=True, text=True, timeout=5)
+                result = subprocess.run(["pacman", "-Q", resolved_name], capture_output=True, text=True, timeout=5)
                 if result.returncode == 0:
                     return {
                         "status": "success",
@@ -125,7 +120,7 @@ def check_version(tool_name: str, version: str = "latest") -> dict:
 
         elif distro == "alpine" and shutil.which("apk"):
             try:
-                result = subprocess.run(["apk", "info", tool_name], capture_output=True, text=True, timeout=5)
+                result = subprocess.run(["apk", "info", resolved_name], capture_output=True, text=True, timeout=5)
                 if result.returncode == 0:
                     return {
                         "status": "success",
@@ -139,7 +134,7 @@ def check_version(tool_name: str, version: str = "latest") -> dict:
         return {
             "status": "error",
             "message": f"Could not determine version for {tool_name}",
-            "details": "Tool is installed, but no supported version method succeeded."
+            "details": "Tool is not installed or no supported version method succeeded."
         }
 
     except Exception as e:
