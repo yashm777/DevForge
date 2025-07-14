@@ -32,35 +32,42 @@ def build_install_command(manager: str, package: str) -> list[list[str]]:
 
 
 def install_with_package_manager(tool: str, resolved_tool: str, manager: str, fallback_msg: str | None = None) -> dict | None:
-    raw_cmds = build_install_command(manager, tool)
-    raw_result = run_commands(raw_cmds)
-    if raw_result and raw_result.returncode == 0:
+    # Always try resolved_tool first
+    resolved_cmds = build_install_command(manager, resolved_tool)
+    logger.info(f"Trying to install resolved package '{resolved_tool}' using {manager}")
+    resolved_result = run_commands(resolved_cmds)
+
+    if resolved_result and resolved_result.returncode == 0:
+        message = f"Installed '{resolved_tool}' via {manager}."
+        if fallback_msg:
+            message = f"{fallback_msg}\n{message}"
         return {
             "status": "success",
-            "message": f"Installed '{tool}' via {manager}.",
-            "stdout": raw_result.stdout.strip(),
-            "warnings": raw_result.stderr.strip() or None
+            "message": message,
+            "stdout": resolved_result.stdout.strip(),
+            "warnings": resolved_result.stderr.strip() or None
         }
 
-    logger.warning(f"Raw install failed for '{tool}': {raw_result.stderr.strip() if raw_result else 'Unknown error'}")
+    logger.warning(f"Resolved install failed for '{resolved_tool}': {resolved_result.stderr.strip() if resolved_result else 'Unknown error'}")
 
+    # Only try raw tool name if it's different from resolved
     if resolved_tool != tool:
-        resolved_cmds = build_install_command(manager, resolved_tool)
-        resolved_result = run_commands(resolved_cmds)
-        if resolved_result and resolved_result.returncode == 0:
-            message = f"Installed '{resolved_tool}' via {manager}."
-            if fallback_msg:
-                message = f"{fallback_msg}\n{message}"
+        raw_cmds = build_install_command(manager, tool)
+        logger.info(f"Falling back to install raw tool '{tool}' using {manager}")
+        raw_result = run_commands(raw_cmds)
+
+        if raw_result and raw_result.returncode == 0:
             return {
                 "status": "success",
-                "message": message,
-                "stdout": resolved_result.stdout.strip(),
-                "warnings": resolved_result.stderr.strip() or None
+                "message": f"Installed '{tool}' via {manager} (fallback).",
+                "stdout": raw_result.stdout.strip(),
+                "warnings": raw_result.stderr.strip() or None
             }
 
-        logger.warning(f"Resolved install failed for '{resolved_tool}': {resolved_result.stderr.strip() if resolved_result else 'Unknown error'}")
+        logger.warning(f"Raw install failed for '{tool}': {raw_result.stderr.strip() if raw_result else 'Unknown error'}")
 
     return None
+
 
 
 def build_snap_install_command(package: str, classic: bool = False) -> list[list[str]]:
