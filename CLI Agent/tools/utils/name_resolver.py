@@ -26,7 +26,7 @@ def resolve_tool_name(raw_name: str, os_type: str, version: str = "latest") -> d
 
     if os_type == "linux":
         if normalized == "java":
-            if version != "latest":
+            if version.strip() != "latest":
                 package = f"openjdk-{version}-jdk"
                 return {"name": package, "fallback": None, "classic_snap": False}
             return {"name": "default-jdk", "fallback": None, "classic_snap": False}
