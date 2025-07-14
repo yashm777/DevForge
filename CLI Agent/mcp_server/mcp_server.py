@@ -37,7 +37,7 @@ def install_tool(tool, version="latest"):
     elif os_type == "darwin":
         return install_mac_tool(tool, version)
     elif os_type == "linux":
-        return install_linux_tool(tool)
+        return install_linux_tool(tool,version)
     else:
         return {"status": "error", "message": f"Unsupported OS: {os_type}"}
 
