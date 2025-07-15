@@ -2,6 +2,7 @@
 
 import sys
 import subprocess
+import time
 from typing import Dict, Any
 
 import typer
@@ -12,6 +13,7 @@ from rich.table import Table
 
 from llm_parser.parser import parse_user_command
 from mcp_client.client import HTTPMCPClient
+from tools.utils import ensure_server_running
 
 # Initialize Rich console
 console = Console()
