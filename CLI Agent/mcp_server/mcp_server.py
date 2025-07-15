@@ -6,9 +6,12 @@ import platform
 import os
 import subprocess
 import logging
+import time
+from datetime import datetime
+from collections import deque
 from tools.code_generator import generate_code
 from tools.installers.mac import install_mac_tool
-from tools.installers.windows import install_windows_tool
+from tools.installers.windows import install_windows_tool, install_windows_tool_by_id
 from tools.installers.linux import install_linux_tool
 from tools.uninstallers.mac import uninstall_mac_tool
 from tools.uninstallers.windows import uninstall_windows_tool
@@ -21,61 +24,108 @@ from tools.upgraders.windows import handle_tool
 from tools.upgraders.linux import handle_tool
 import traceback
 
-
-
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# In-memory log storage
+server_logs = deque(maxlen=1000)  # Keep last 1000 log entries
+
+def add_log_entry(level: str, message: str, details: dict = None):
+    """Add a log entry to the in-memory log storage"""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    log_entry = {
+        "timestamp": timestamp,
+        "level": level,
+        "message": message,
+        "details": details or {}
+    }
+    server_logs.append(log_entry)
+    # Also log to console for debugging
+    logger.info(f"[{timestamp}] {level.upper()}: {message}")
 
 app = FastAPI()
 
 # --- Dispatcher Functions ---
 def install_tool(tool, version="latest"):
+    add_log_entry("INFO", f"Install request for tool: {tool} (version: {version})")
     os_type = platform.system().lower()
     if os_type == "windows":
-        return install_windows_tool(tool, version)
+        result = install_windows_tool(tool, version)
     elif os_type == "darwin":
-        return install_mac_tool(tool, version)
+        result = install_mac_tool(tool, version)
     elif os_type == "linux":
-        return install_linux_tool(tool,version)
+        result = install_linux_tool(tool)
     else:
-        return {"status": "error", "message": f"Unsupported OS: {os_type}"}
+        result = {"status": "error", "message": f"Unsupported OS: {os_type}"}
+    
+    add_log_entry("INFO", f"Install result for {tool}: {result.get('status', 'unknown')}")
+    return result
+
+def install_tool_by_id(package_id, version="latest"):
+    """Install a specific package by its ID"""
+    add_log_entry("INFO", f"Install by ID request for package: {package_id} (version: {version})")
+    os_type = platform.system().lower()
+    if os_type == "windows":
+        result = install_windows_tool_by_id(package_id, version)
+    elif os_type == "darwin":
+        result = install_mac_tool(package_id, version)  # Mac doesn't have by_id function yet
+    elif os_type == "linux":
+        result = install_linux_tool(package_id)  # Linux doesn't have by_id function yet
+    else:
+        result = {"status": "error", "message": f"Unsupported OS: {os_type}"}
+    
+    add_log_entry("INFO", f"Install by ID result for {package_id}: {result.get('status', 'unknown')}")
+    return result
 
 def uninstall_tool(tool):
+    add_log_entry("INFO", f"Uninstall request for tool: {tool}")
     os_type = platform.system().lower()
     if os_type == "windows":
-        return uninstall_windows_tool(tool)
+        result = uninstall_windows_tool(tool)
     elif os_type == "darwin":
-        return uninstall_mac_tool(tool)
+        result = uninstall_mac_tool(tool)
     elif os_type == "linux":
-        return uninstall_linux_tool(tool)
+        result = uninstall_linux_tool(tool)
     else:
-        return {"status": "error", "message": f"Unsupported OS: {os_type}"}
+        result = {"status": "error", "message": f"Unsupported OS: {os_type}"}
+    
+    add_log_entry("INFO", f"Uninstall result for {tool}: {result.get('status', 'unknown')}")
+    return result
 
 def check_version(tool, version="latest"):
+    add_log_entry("INFO", f"Version check request for tool: {tool}")
     os_type = platform.system().lower()
     if os_type == "windows":
-        return check_version_windows(tool, version)
+        result = check_version_windows(tool, version)
     elif os_type == "darwin":
-        return check_version_mac(tool, version)
+        result = check_version_mac(tool, version)
     elif os_type == "linux":
-        return check_version_linux(tool, version)
+        result = check_version_linux(tool, version)
     else:
-        return {"status": "error", "message": f"Unsupported OS: {os_type}"}
+        result = {"status": "error", "message": f"Unsupported OS: {os_type}"}
+    
+    add_log_entry("INFO", f"Version check result for {tool}: {result.get('status', 'unknown')}")
+    return result
 
 def upgrade_tool(tool, version="latest"):
+    add_log_entry("INFO", f"Upgrade request for tool: {tool} (version: {version})")
     os_type = platform.system().lower()
     if os_type == "windows":
-        return handle_tool(tool, version)
+        result = handle_tool(tool, version)
     elif os_type == "darwin":
-        return handle_tool_mac(tool, version)
+        result = handle_tool_mac(tool, version)
     elif os_type == "linux":
-        return handle_tool(tool, version)
+        result = handle_tool(tool, version)
     else:
-        return {"status": "error", "message": f"Unsupported OS: {os_type}"}
+        result = {"status": "error", "message": f"Unsupported OS: {os_type}"}
+    
+    add_log_entry("INFO", f"Upgrade result for {tool}: {result.get('status', 'unknown')}")
+    return result
 
 def get_system_info():
-    return {
+    add_log_entry("INFO", "System info request")
+    result = {
         "os_type": platform.system(),
         "os_version": platform.version(),
         "machine": platform.machine(),
@@ -83,29 +133,32 @@ def get_system_info():
         "cwd": os.getcwd(),
         "user": os.getenv("USERNAME") or os.getenv("USER") or "unknown"
     }
+    add_log_entry("INFO", "System info provided")
+    return result
 
+def get_server_logs(lines: int = 50):
+    """Get the last N log entries"""
+    return list(server_logs)[-lines:]
 
 # Task dispatch dictionary
 task_handlers = {
     "install": install_tool,
+    "install_by_id": install_tool_by_id,
     "uninstall": uninstall_tool,
     "update": upgrade_tool,
     "upgrade": upgrade_tool,
     "version": check_version,
 }
 
-
 @app.post("/mcp/")
 async def mcp_endpoint(request: Request):
     try:
         req = await request.json()
-        logger.info(f"Incoming MCP request: {req}")
+        add_log_entry("INFO", f"Incoming MCP request: {req.get('method', 'unknown')}", {"request": req})
 
         method = req.get("method")
         params = req.get("params", {})
         id_ = req.get("id")
-
-        logger.info(f"Method: {method}, Params: {params}")
 
         result = None
         if method == "tool_action_wrapper":
@@ -133,9 +186,14 @@ async def mcp_endpoint(request: Request):
         elif method == "info://server":
             result = get_system_info()
 
+        elif method == "get_logs":
+            lines = params.get("lines", 50)
+            result = {"logs": get_server_logs(lines)}
+
         else:
             result = {"status": "error", "message": f"Unknown method: {method}"}
 
+        add_log_entry("INFO", f"MCP response for {method}: {result.get('status', 'success')}")
         return JSONResponse(
             content={
                 "jsonrpc": "2.0",
@@ -146,6 +204,8 @@ async def mcp_endpoint(request: Request):
         )
     except Exception as e:
         # Log the full traceback for debugging
+        error_msg = f"Exception in mcp_endpoint: {e}"
+        add_log_entry("ERROR", error_msg, {"traceback": traceback.format_exc()})
         logger.error(f"Exception in mcp_endpoint: {e}\n{traceback.format_exc()}")
 
         # Return a JSON error response
@@ -170,9 +230,9 @@ def main():
     parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
     args = parser.parse_args()
 
+    add_log_entry("INFO", f"Starting MCP server on {args.host}:{args.port}")
     logger.info(f"Starting MCP server on {args.host}:{args.port}")
     uvicorn.run("mcp_server.mcp_server:app", host=args.host, port=args.port, reload=False)
-
 
 if __name__ == "__main__":
     main()
