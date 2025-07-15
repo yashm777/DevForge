@@ -32,8 +32,13 @@ class HTTPMCPClient:
             "tool_name": tool_name,
             "version": version
         })    
+    
     def get_server_info(self):
         return self._make_request("info://server", {})
+    
+    def get_server_logs(self, lines: int = 50):
+        """Get server logs from the MCP server"""
+        return self._make_request("get_logs", {"lines": lines})
     
     def generate_code(self, description: str):
         result = self._make_request("generate_code", {"description": description})
