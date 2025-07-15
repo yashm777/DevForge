@@ -165,11 +165,11 @@ def generate_smart_tool_url(tool_name: str) -> str:
     try:
         client = openai.OpenAI(api_key=OPENAI_API_KEY)
         prompt = (
-            f"A developer is trying to find the official website or trusted installation link for a tool named '{tool_name}'. "
-            "Return only the best single URL (if known), ideally the official site or trusted repository. "
-            "If the tool name is ambiguous, uncommon, or doesn't exist (e.g., 'mercedez benz' or gibberish), "
-            "respond with a clear message that it's unrecognized. Do not include code blocks or markdown formatting. "
-            "Just respond with either a URL or an error message."
+            f"You are helping a developer locate the most appropriate and official website or trusted source to download or learn more about a tool called '{tool_name}'."
+"If the tool is well-known (e.g., Java, Docker, IntelliJ), return the best URL — preferably the official website, trusted package repository (like apt, brew, snap), or GitHub page."
+"If the tool is less known, research and return the most relevant and safe-looking link. You may include the GitHub repo, docs, or publisher's page — whichever looks best."
+"If the tool name is very unclear, gibberish, or seems unrelated to software (e.g., 'carrot3000'), respond with a short note saying it doesn’t appear to be a recognized tool."
+"Return only the single most appropriate URL or response."
         )
 
         response = client.chat.completions.create(
