@@ -188,5 +188,5 @@ def install_linux_tool(tool: str, version: str = "latest") -> dict:
     return {
         "status": "error",
         "message": f"Neither the package manager nor snap is available for installation.\nManual installation guide: {manual_link}",
-        "manual_url": manual_link
+        "manual_url": tool
     }

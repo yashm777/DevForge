@@ -191,10 +191,3 @@ def generate_smart_tool_url(tool_name: str) -> str:
     except Exception as e:
         logger.error(f"Smart tool URL generation failed: {e}")
         return f"https://www.google.com/search?q=download+{tool_name.replace(' ', '+')}+official"
-
-
-# def guess_tool_website(tool_name: str) -> str:
-#     known_ui_tools = {"cursor", "intellij", "eclipse", "pycharm", "vscode", "android studio"}
-#     if tool_name.lower() in known_ui_tools:
-#         return f"https://www.google.com/search?q=download+{tool_name.replace(' ', '+')}+official"
-#     return f"https://github.com/search?q={tool_name.replace(' ', '+')}"
