@@ -122,9 +122,17 @@ def uninstall_tool_linux(raw_tool: str, version: str = "latest") -> dict:
     if raw_tool.lower() == "java":
         removed_paths = clean_java_jvm_dirs()
         clean_java_symlinks()
+        extra_hint = (
+            "\nNote: For complete removal, consider running "
+            "`sudo apt-get purge openjdk-<version>-jre:amd64` manually "
+            "if any versions still remain."
+        )
         return {
             "status": "success" if success else "error",
-            "message": f"Removed Java components: {success}. JVM dirs cleaned: {removed_paths}",
+            "message": (
+                f"Removed Java components: {success}. JVM dirs cleaned: {removed_paths}."
+                + (extra_hint if success else "")
+            ),
             "removed_dirs": removed_paths,
             "uninstalled_packages": success,
             "failed_packages": failed
