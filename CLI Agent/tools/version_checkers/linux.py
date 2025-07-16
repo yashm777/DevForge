@@ -74,6 +74,7 @@ def check_version(tool_name: str, version: str = "latest") -> dict:
         if shutil.which(resolved_name):
             version_commands = [
                 [resolved_name, "--version"],
+                [resolved_name, "-version"],
                 [resolved_name, "-v"],
                 [resolved_name, "-V"],
                 [resolved_name, "version"]
