@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 def run_uninstall_cmd(tool_name: str, manager: str) -> subprocess.CompletedProcess | None:
     try:
         cmd_map = {
-            "apt": ["sudo", "apt-get", "purge", "-y", tool_name],  # purge instead of remove
+            "apt": ["sudo", "apt-get", "purge", "-y", tool_name],
             "dnf": ["sudo", "dnf", "remove", "-y", tool_name],
             "pacman": ["sudo", "pacman", "-R", "--noconfirm", tool_name],
             "apk": ["sudo", "apk", "del", tool_name],
@@ -57,7 +57,7 @@ def get_related_packages(tool_name: str, pkg_manager: str) -> list[str]:
 
     try:
         if pkg_manager == "apt" and shutil.which("dpkg"):
-            result = subprocess.run(["dpkg", "-l"], capture_output=True, text=True, timeout=5)
+            result = subprocess.run(["dpkg", "-l"], capture_output=True, text=True)
             lines = result.stdout.strip().splitlines()
             installed_packages = [
                 line.split()[1]
@@ -67,15 +67,15 @@ def get_related_packages(tool_name: str, pkg_manager: str) -> list[str]:
             return installed_packages
 
         elif pkg_manager == "dnf":
-            result = subprocess.run(["dnf", "list", "installed"], capture_output=True, text=True, timeout=5)
+            result = subprocess.run(["dnf", "list", "installed"], capture_output=True, text=True)
             return [line.split()[0] for line in result.stdout.splitlines() if any(k in line for k in keywords)]
 
         elif pkg_manager == "pacman":
-            result = subprocess.run(["pacman", "-Q"], capture_output=True, text=True, timeout=5)
+            result = subprocess.run(["pacman", "-Q"], capture_output=True, text=True)
             return [line.split()[0] for line in result.stdout.splitlines() if any(k in line for k in keywords)]
 
         elif pkg_manager == "apk":
-            result = subprocess.run(["apk", "info"], capture_output=True, text=True, timeout=5)
+            result = subprocess.run(["apk", "info"], capture_output=True, text=True)
             return [line.strip() for line in result.stdout.splitlines() if any(k in line for k in keywords)]
 
         else:
@@ -135,7 +135,6 @@ def uninstall_linux_tool(tool: str, version: str = "latest") -> dict:
                 logger.warning(f"Failed to uninstall related package '{pkg_name}'")
 
         if all_uninstalled:
-            # Additional cleanup for java
             if tool.lower() == "java":
                 removed_paths = clean_java_jvm_dirs()
                 clean_java_symlinks()
@@ -154,11 +153,9 @@ def uninstall_linux_tool(tool: str, version: str = "latest") -> dict:
         else:
             logger.info(f"No related packages were successfully uninstalled for '{tool}'")
 
-    # Fallback to uninstall candidate names directly if related packages not found or failed
     for name in candidate_names:
         result = run_uninstall_cmd(name, pkg_manager)
         if result and result.returncode == 0:
-            # Additional cleanup for java
             if tool.lower() == "java":
                 removed_paths = clean_java_jvm_dirs()
                 clean_java_symlinks()
@@ -175,12 +172,10 @@ def uninstall_linux_tool(tool: str, version: str = "latest") -> dict:
                     "stdout": result.stdout.strip()
                 }
 
-    # Try uninstalling via snap if available
     if is_snap_available():
         for name in candidate_names:
             snap_result = uninstall_with_snap(name)
             if snap_result and snap_result.returncode == 0:
-                # Additional cleanup for java
                 if tool.lower() == "java":
                     removed_paths = clean_java_jvm_dirs()
                     clean_java_symlinks()
