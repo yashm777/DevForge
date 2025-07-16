@@ -1,6 +1,7 @@
 import subprocess
 import shutil
 import logging
+import os
 from tools.utils.name_resolver import resolve_tool_name
 from tools.utils.os_utils import (
     get_available_package_manager,
@@ -12,6 +13,14 @@ logger = logging.getLogger(__name__)
 
 def run_uninstall_cmd(tool_name: str, manager: str) -> subprocess.CompletedProcess | None:
     try:
+        # Prepare environment with noninteractive frontend
+        env = os.environ.copy()
+        env["DEBIAN_FRONTEND"] = "noninteractive"
+
+        # Strip architecture suffix if needed (optional, from previous suggestion)
+        if ":" in tool_name:
+            tool_name = tool_name.split(":")[0]
+
         cmd_map = {
             "apt": ["sudo", "apt-get", "purge", "-y", tool_name],
             "dnf": ["sudo", "dnf", "remove", "-y", tool_name],
@@ -24,12 +33,11 @@ def run_uninstall_cmd(tool_name: str, manager: str) -> subprocess.CompletedProce
             return None
 
         logger.info(f"Running uninstall command: {' '.join(cmd)}")
-        return subprocess.run(cmd, capture_output=True, text=True)
+        return subprocess.run(cmd, capture_output=True, text=True, env=env)
 
     except Exception as e:
         logger.error(f"Uninstallation failed for {tool_name}: {e}")
         return None
-
 def uninstall_with_snap(tool_name: str) -> subprocess.CompletedProcess | None:
     try:
         list_cmd = ["snap", "list"]
@@ -93,7 +101,7 @@ def clean_java_jvm_dirs() -> list[str]:
     if os.path.exists(jvm_path):
         for entry in os.listdir(jvm_path):
             full_path = os.path.join(jvm_path, entry)
-            if any(kw in entry.lower() for kw in ("java", "jdk", "jre")):
+            if any(kw in entry.lower() for kw in ("java", "jdk", "jre","openjdk")):
                 try:
                     subprocess.run(["sudo", "rm", "-rf", full_path])
                     removed.append(full_path)
