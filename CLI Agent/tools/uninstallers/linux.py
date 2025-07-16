@@ -12,32 +12,45 @@ from tools.utils.os_utils import (
 logger = logging.getLogger(__name__)
 
 def run_uninstall_cmd(tool_name: str, manager: str) -> subprocess.CompletedProcess | None:
+    import os
+
     try:
-        # Prepare environment with noninteractive frontend
         env = os.environ.copy()
         env["DEBIAN_FRONTEND"] = "noninteractive"
 
-        # Strip architecture suffix if needed (optional, from previous suggestion)
         if ":" in tool_name:
             tool_name = tool_name.split(":")[0]
 
-        cmd_map = {
-            "apt": ["sudo", "apt-get", "purge", "-y", tool_name],
-            "dnf": ["sudo", "dnf", "remove", "-y", tool_name],
-            "pacman": ["sudo", "pacman", "-R", "--noconfirm", tool_name],
-            "apk": ["sudo", "apk", "del", tool_name],
-        }
-        cmd = cmd_map.get(manager)
-        if not cmd:
+        # Build command
+        if manager == "apt":
+            purge_cmd = ["sudo", "apt-get", "purge", "-y", tool_name]
+            autoremove_cmd = ["sudo", "apt-get", "autoremove", "-y"]
+
+            logger.info(f"Running uninstall: {' '.join(purge_cmd)}")
+            purge_result = subprocess.run(purge_cmd, capture_output=True, text=True, env=env)
+
+            logger.info(f"Running autoremove: {' '.join(autoremove_cmd)}")
+            subprocess.run(autoremove_cmd, capture_output=True, text=True, env=env)
+
+            return purge_result
+
+        elif manager == "dnf":
+            cmd = ["sudo", "dnf", "remove", "-y", tool_name]
+        elif manager == "pacman":
+            cmd = ["sudo", "pacman", "-Rns", "--noconfirm", tool_name]
+        elif manager == "apk":
+            cmd = ["sudo", "apk", "del", tool_name]
+        else:
             logger.error(f"Unsupported package manager: {manager}")
             return None
 
-        logger.info(f"Running uninstall command: {' '.join(cmd)}")
+        logger.info(f"Running uninstall: {' '.join(cmd)}")
         return subprocess.run(cmd, capture_output=True, text=True, env=env)
 
     except Exception as e:
         logger.error(f"Uninstallation failed for {tool_name}: {e}")
         return None
+
 def uninstall_with_snap(tool_name: str) -> subprocess.CompletedProcess | None:
     try:
         list_cmd = ["snap", "list"]
