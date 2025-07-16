@@ -55,7 +55,7 @@ def install_tool(tool, version="latest"):
     elif os_type == "darwin":
         result = install_mac_tool(tool, version)
     elif os_type == "linux":
-        result = install_linux_tool(tool)
+        result = install_linux_tool(tool,version)
     else:
         result = {"status": "error", "message": f"Unsupported OS: {os_type}"}
     
@@ -71,7 +71,7 @@ def install_tool_by_id(package_id, version="latest"):
     elif os_type == "darwin":
         result = install_mac_tool(package_id, version)  # Mac doesn't have by_id function yet
     elif os_type == "linux":
-        result = install_linux_tool(package_id)  # Linux doesn't have by_id function yet
+        result = install_linux_tool(package_id,version)  # Linux doesn't have by_id function yet
     else:
         result = {"status": "error", "message": f"Unsupported OS: {os_type}"}
     
