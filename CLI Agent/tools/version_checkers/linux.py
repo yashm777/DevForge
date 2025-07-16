@@ -14,7 +14,7 @@ def check_snap_version(tool_name):
     try:
         snap_list = subprocess.run(
             ["snap", "list", tool_name],
-            capture_output=True, text=True, timeout=5
+            capture_output=True, text=True
         )
         if snap_list.returncode != 0 or "error:" in snap_list.stderr.lower():
             return None
@@ -41,6 +41,35 @@ def check_version(tool_name: str, version: str = "latest") -> dict:
         resolved = resolve_tool_name(tool_name, "linux", version)
         resolved_name = resolved.get("name", tool_name)
 
+        # Special handling for Java to detect active and installed versions
+        if tool_name.lower() == "java":
+            try:
+                result = subprocess.run(["java", "-version"], capture_output=True, text=True)
+                active_version = (result.stderr + result.stdout).strip()
+
+                import os
+                jvm_dir = "/usr/lib/jvm"
+                installed_versions = []
+                if os.path.exists(jvm_dir):
+                    for entry in os.listdir(jvm_dir):
+                        if any(k in entry.lower() for k in ("jdk", "jre", "java")):
+                            installed_versions.append(entry)
+
+                return {
+                    "status": "success",
+                    "message": "Java version check completed",
+                    "active_version": active_version,
+                    "installed_versions": installed_versions,
+                    "source": "java/bin + jvm folder"
+                }
+            except Exception as e:
+                logger.error(f"Error fetching Java version: {e}")
+                return {
+                    "status": "error",
+                    "message": "Failed to retrieve Java version",
+                    "details": str(e)
+                }
+
         # First check using shutil.which
         if shutil.which(resolved_name):
             version_commands = [
@@ -51,7 +80,7 @@ def check_version(tool_name: str, version: str = "latest") -> dict:
             ]
             for cmd in version_commands:
                 try:
-                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+                    result = subprocess.run(cmd, capture_output=True, text=True)
                     output = (result.stdout + result.stderr).strip()
                     if result.returncode == 0 and output:
                         return {
@@ -78,7 +107,7 @@ def check_version(tool_name: str, version: str = "latest") -> dict:
         distro = get_linux_distro()
         if distro in ("debian", "ubuntu") and shutil.which("dpkg"):
             try:
-                result = subprocess.run(["dpkg", "-l", resolved_name], capture_output=True, text=True, timeout=5)
+                result = subprocess.run(["dpkg", "-l", resolved_name], capture_output=True, text=True)
                 for line in result.stdout.strip().splitlines():
                     if line.startswith('ii') and resolved_name in line:
                         parts = line.split()
@@ -94,7 +123,7 @@ def check_version(tool_name: str, version: str = "latest") -> dict:
 
         elif distro in ("fedora", "centos", "rhel") and shutil.which("rpm"):
             try:
-                result = subprocess.run(["rpm", "-q", resolved_name], capture_output=True, text=True, timeout=5)
+                result = subprocess.run(["rpm", "-q", resolved_name], capture_output=True, text=True)
                 if result.returncode == 0:
                     return {
                         "status": "success",
@@ -107,7 +136,7 @@ def check_version(tool_name: str, version: str = "latest") -> dict:
 
         elif distro in ("arch", "manjaro") and shutil.which("pacman"):
             try:
-                result = subprocess.run(["pacman", "-Q", resolved_name], capture_output=True, text=True, timeout=5)
+                result = subprocess.run(["pacman", "-Q", resolved_name], capture_output=True, text=True)
                 if result.returncode == 0:
                     return {
                         "status": "success",
@@ -120,7 +149,7 @@ def check_version(tool_name: str, version: str = "latest") -> dict:
 
         elif distro == "alpine" and shutil.which("apk"):
             try:
-                result = subprocess.run(["apk", "info", resolved_name], capture_output=True, text=True, timeout=5)
+                result = subprocess.run(["apk", "info", resolved_name], capture_output=True, text=True)
                 if result.returncode == 0:
                     return {
                         "status": "success",

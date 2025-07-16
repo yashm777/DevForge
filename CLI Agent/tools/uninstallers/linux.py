@@ -62,7 +62,7 @@ def get_related_packages(tool_name: str, pkg_manager: str) -> list[str]:
             installed_packages = [
                 line.split()[1]
                 for line in lines
-                if line.startswith("ii") and any(k in line for k in keywords)
+                if line.startswith("ii") and any(k in line.split()[1] for k in keywords)
             ]
             return installed_packages
 
