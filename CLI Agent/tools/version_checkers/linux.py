@@ -59,65 +59,72 @@ class LinuxVersionChecker:
                 logger.debug(f"Error running version command on {executable} with {flag}: {e}")
         return None
 
-    def _check_java_versions(self):
-        # For Java, check all installed JDK/JRE versions via package manager and java -version
-        installed_versions = []
-        active_version = None
+def _check_java_versions(self):
+    installed_versions = []
+    active_version = None
 
-        # Try to detect installed packages related to Java via package manager
-        # Using apt/dpkg for example; for other package managers adapt accordingly
-
-        if self.pkg_manager == "apt":
-            try:
-                result = subprocess.run(["dpkg", "-l"], capture_output=True, text=True, timeout=5)
-                if result.returncode == 0:
-                    lines = result.stdout.strip().splitlines()
-                    for line in lines:
-                        if line.startswith("ii") and ("openjdk" in line or "default-jdk" in line or "jdk" in line or "jre" in line):
-                            pkg_name = line.split()[1]
-                            installed_versions.append(pkg_name)
-            except Exception as e:
-                logger.error(f"Error checking installed Java packages: {e}")
-
-        # Run `java -version` to get active java version (usually stderr)
-        active_version_str = None
+    # 1. List Java-related packages via dpkg
+    if self.pkg_manager == "apt":
         try:
-            result = subprocess.run(["java", "-version"], capture_output=True, text=True, timeout=5)
+            result = subprocess.run(["dpkg", "-l"], capture_output=True, text=True, timeout=5)
             if result.returncode == 0:
-                active_version_str = result.stderr.strip().splitlines()[0]
+                lines = result.stdout.strip().splitlines()
+                for line in lines:
+                    if line.startswith("ii") and any(term in line.lower() for term in ["openjdk", "default-jdk", "jdk", "jre"]):
+                        pkg_name = line.split()[1]
+                        installed_versions.append(pkg_name)
         except Exception as e:
-            logger.debug(f"Error running 'java -version': {e}")
+            logger.error(f"Error checking installed Java packages: {e}")
 
-        # Compose result list, mark active version with (active)
-        java_versions_info = []
-        for ver in installed_versions:
-            if active_version_str and ver in active_version_str:
-                java_versions_info.append(f"{ver} (active)")
-                active_version = ver
-            else:
-                java_versions_info.append(ver)
+    # 2. Detect active Java version using symlink
+    java_path = None
+    try:
+        result = subprocess.run(["which", "java"], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            java_path = result.stdout.strip()
+    except Exception as e:
+        logger.debug(f"Error running 'which java': {e}")
 
-        # If active version not matched from packages, still add active version from java -version output
-        if active_version_str and active_version is None:
-            java_versions_info.append(f"Active: {active_version_str}")
+    active_path = None
+    if java_path:
+        try:
+            result = subprocess.run(["readlink", "-f", java_path], capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                active_path = result.stdout.strip()
+        except Exception as e:
+            logger.debug(f"Error resolving symlink for java: {e}")
 
-        if not java_versions_info:
-            # If no packages detected, fallback to active version string if present
-            if active_version_str:
-                return {
-                    "tool": "java",
-                    "status": "installed",
-                    "versions": [f"Active: {active_version_str}"]
-                }
-            else:
-                return {
-                    "tool": "java",
-                    "status": "not_installed",
-                    "message": "Java is not installed on this system."
-                }
+    # Extract version info from the resolved path
+    if active_path:
+        # Example: /usr/lib/jvm/java-17-openjdk-amd64/bin/java → java-17-openjdk-amd64
+        parts = active_path.split("/")
+        for part in parts:
+            if "java-" in part and ("jdk" in part or "jre" in part):
+                active_version = part
+                break
 
+    # Compose output
+    versions_output = []
+    for pkg in installed_versions:
+        if active_version and active_version in pkg:
+            versions_output.append(f"{pkg} (active)")
+        else:
+            versions_output.append(pkg)
+
+    # If active version detected but not in installed packages, include it separately
+    if active_version and not any(active_version in pkg for pkg in installed_versions):
+        versions_output.append(f"{active_version} (active but not from package list)")
+
+    if not versions_output:
         return {
             "tool": "java",
-            "status": "installed",
-            "versions": java_versions_info
+            "status": "not_installed",
+            "message": "No Java installations detected on the system."
         }
+
+    return {
+        "tool": "java",
+        "status": "installed",
+        "versions": versions_output
+    }
+
