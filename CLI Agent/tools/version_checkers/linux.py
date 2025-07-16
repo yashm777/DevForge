@@ -1,7 +1,7 @@
 import shutil
 import subprocess
 import logging
-from tools.utils.os_utils import get_linux_distro, is_snap_available
+from tools.utils.os_utils import get_os_type,get_linux_distro, is_snap_available
 from tools.utils.name_resolver import resolve_tool_name
 
 logging.basicConfig(level=logging.INFO)
@@ -37,10 +37,10 @@ def check_snap_version(tool_name):
         return None
 
 def check_version(tool_name: str, version: str = "latest") -> dict:
+    os_type = get_os_type
     try:
-        resolved = resolve_tool_name(tool_name, "linux", version)
+        resolved = resolve_tool_name(tool_name, os_type, version, context="version_check")
         resolved_name = resolved.get("name", tool_name)
-
         # Special handling for Java to detect active and installed versions
         if tool_name.lower() == "java":
             try:
