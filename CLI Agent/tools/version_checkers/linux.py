@@ -1,176 +1,123 @@
-import shutil
 import subprocess
 import logging
-from tools.utils.os_utils import get_os_type,get_linux_distro, is_snap_available
+from tools.utils.os_utils import get_available_package_manager, is_tool_installed
 from tools.utils.name_resolver import resolve_tool_name
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def check_snap_version(tool_name):
-    if not is_snap_available():
-        return None
+class LinuxVersionChecker:
+    def __init__(self):
+        self.pkg_manager = get_available_package_manager()
+        if self.pkg_manager == "unknown":
+            raise EnvironmentError("No supported package manager found on this Linux system.")
 
-    try:
-        snap_list = subprocess.run(
-            ["snap", "list", tool_name],
-            capture_output=True, text=True
-        )
-        if snap_list.returncode != 0 or "error:" in snap_list.stderr.lower():
-            return None
+    def check_tool_version(self, tool_name: str):
+        # Resolve executable name for version check context
+        resolved = resolve_tool_name(tool_name, "linux", context="version_check")
+        executable = resolved["name"]
 
-        lines = snap_list.stdout.strip().splitlines()
-        if len(lines) < 2:
-            return None
-
-        parts = lines[1].split()
-        if len(parts) < 2:
-            return None
-
-        version = parts[1]
-        return {
-            "version": version,
-            "source": "snap"
-        }
-    except Exception as e:
-        logger.debug(f"Snap version check failed: {e}")
-        return None
-
-def check_version(tool_name: str, version: str = "latest") -> dict:
-    os_type = get_os_type
-    try:
-        resolved = resolve_tool_name(tool_name, os_type, version, context="version_check")
-        resolved_name = resolved.get("name", tool_name)
-        # Special handling for Java to detect active and installed versions
-        if tool_name.lower() == "java":
-            try:
-                result = subprocess.run(["java", "-version"], capture_output=True, text=True)
-                active_version = (result.stderr + result.stdout).strip()
-
-                import os
-                jvm_dir = "/usr/lib/jvm"
-                installed_versions = []
-                if os.path.exists(jvm_dir):
-                    for entry in os.listdir(jvm_dir):
-                        if any(k in entry.lower() for k in ("jdk", "jre", "java")):
-                            installed_versions.append(entry)
-
-                return {
-                    "status": "success",
-                    "message": "Java version check completed",
-                    "active_version": active_version,
-                    "installed_versions": installed_versions,
-                    "source": "java/bin + jvm folder"
-                }
-            except Exception as e:
-                logger.error(f"Error fetching Java version: {e}")
-                return {
-                    "status": "error",
-                    "message": "Failed to retrieve Java version",
-                    "details": str(e)
-                }
-
-        # First check using shutil.which
-        if shutil.which(resolved_name):
-            version_commands = [
-                [resolved_name, "--version"],
-                [resolved_name, "-version"],
-                [resolved_name, "-v"],
-                [resolved_name, "-V"],
-                [resolved_name, "version"]
-            ]
-            for cmd in version_commands:
-                try:
-                    result = subprocess.run(cmd, capture_output=True, text=True)
-                    output = (result.stdout + result.stderr).strip()
-                    if result.returncode == 0 and output:
-                        return {
-                            "status": "success",
-                            "message": f"Version information for {tool_name}",
-                            "version": output,
-                            "command": " ".join(cmd),
-                            "source": "executable"
-                        }
-                except Exception as e:
-                    logger.debug(f"Command {cmd} failed: {e}")
-
-        # Check snap
-        snap_version = check_snap_version(resolved_name)
-        if snap_version:
+        # First check if the executable is in PATH
+        if not is_tool_installed(executable):
+            # Tool not installed according to PATH
             return {
-                "status": "success",
-                "message": f"{tool_name} found as snap package '{resolved_name}' version {snap_version['version']}",
-                "version": snap_version["version"],
-                "source": "snap"
+                "tool": tool_name,
+                "status": "not_installed",
+                "message": f"'{tool_name}' is not installed on the system."
             }
 
-        # Distro-specific package manager fallback
-        distro = get_linux_distro()
-        if distro in ("debian", "ubuntu") and shutil.which("dpkg"):
-            try:
-                result = subprocess.run(["dpkg", "-l", resolved_name], capture_output=True, text=True)
-                for line in result.stdout.strip().splitlines():
-                    if line.startswith('ii') and resolved_name in line:
-                        parts = line.split()
-                        if len(parts) >= 3:
-                            return {
-                                "status": "success",
-                                "message": f"Version info for {tool_name} (APT)",
-                                "version": parts[2],
-                                "source": "apt/dpkg"
-                            }
-            except Exception as e:
-                logger.debug(f"dpkg failed: {e}")
+        # Special handling for Java
+        if tool_name.lower() == "java":
+            return self._check_java_versions()
 
-        elif distro in ("fedora", "centos", "rhel") and shutil.which("rpm"):
-            try:
-                result = subprocess.run(["rpm", "-q", resolved_name], capture_output=True, text=True)
-                if result.returncode == 0:
-                    return {
-                        "status": "success",
-                        "message": f"Version info for {tool_name} (RPM)",
-                        "version": result.stdout.strip(),
-                        "source": "rpm"
-                    }
-            except Exception as e:
-                logger.debug(f"rpm failed: {e}")
+        # Generic version check command: try <executable> --version or -version
+        version = self._run_version_command(executable)
+        if version:
+            return {
+                "tool": tool_name,
+                "status": "installed",
+                "version": version.strip()
+            }
 
-        elif distro in ("arch", "manjaro") and shutil.which("pacman"):
-            try:
-                result = subprocess.run(["pacman", "-Q", resolved_name], capture_output=True, text=True)
-                if result.returncode == 0:
-                    return {
-                        "status": "success",
-                        "message": f"Version info for {tool_name} (Pacman)",
-                        "version": result.stdout.strip(),
-                        "source": "pacman"
-                    }
-            except Exception as e:
-                logger.debug(f"pacman failed: {e}")
-
-        elif distro == "alpine" and shutil.which("apk"):
-            try:
-                result = subprocess.run(["apk", "info", resolved_name], capture_output=True, text=True)
-                if result.returncode == 0:
-                    return {
-                        "status": "success",
-                        "message": f"Version info for {tool_name} (APK)",
-                        "version": result.stdout.strip(),
-                        "source": "apk"
-                    }
-            except Exception as e:
-                logger.debug(f"apk failed: {e}")
-
+        # If version detection failed but executable present
         return {
-            "status": "error",
-            "message": f"Could not determine version for {tool_name}",
-            "details": "Tool is not installed or no supported version method succeeded."
+            "tool": tool_name,
+            "status": "installed",
+            "version": "Unknown version"
         }
 
-    except Exception as e:
-        logger.error(f"Exception while checking version for {tool_name}: {e}")
+    def _run_version_command(self, executable: str) -> str | None:
+        # Try common flags for version info
+        for flag in ["--version", "-version"]:
+            try:
+                result = subprocess.run([executable, flag], capture_output=True, text=True, timeout=5)
+                if result.returncode == 0 and result.stdout.strip():
+                    return result.stdout.strip()
+                # Some tools print version info on stderr (e.g. java)
+                if result.returncode == 0 and result.stderr.strip():
+                    return result.stderr.strip()
+            except Exception as e:
+                logger.debug(f"Error running version command on {executable} with {flag}: {e}")
+        return None
+
+    def _check_java_versions(self):
+        # For Java, check all installed JDK/JRE versions via package manager and java -version
+        installed_versions = []
+        active_version = None
+
+        # Try to detect installed packages related to Java via package manager
+        # Using apt/dpkg for example; for other package managers adapt accordingly
+
+        if self.pkg_manager == "apt":
+            try:
+                result = subprocess.run(["dpkg", "-l"], capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    lines = result.stdout.strip().splitlines()
+                    for line in lines:
+                        if line.startswith("ii") and ("openjdk" in line or "default-jdk" in line or "jdk" in line or "jre" in line):
+                            pkg_name = line.split()[1]
+                            installed_versions.append(pkg_name)
+            except Exception as e:
+                logger.error(f"Error checking installed Java packages: {e}")
+
+        # Run `java -version` to get active java version (usually stderr)
+        active_version_str = None
+        try:
+            result = subprocess.run(["java", "-version"], capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                active_version_str = result.stderr.strip().splitlines()[0]
+        except Exception as e:
+            logger.debug(f"Error running 'java -version': {e}")
+
+        # Compose result list, mark active version with (active)
+        java_versions_info = []
+        for ver in installed_versions:
+            if active_version_str and ver in active_version_str:
+                java_versions_info.append(f"{ver} (active)")
+                active_version = ver
+            else:
+                java_versions_info.append(ver)
+
+        # If active version not matched from packages, still add active version from java -version output
+        if active_version_str and active_version is None:
+            java_versions_info.append(f"Active: {active_version_str}")
+
+        if not java_versions_info:
+            # If no packages detected, fallback to active version string if present
+            if active_version_str:
+                return {
+                    "tool": "java",
+                    "status": "installed",
+                    "versions": [f"Active: {active_version_str}"]
+                }
+            else:
+                return {
+                    "tool": "java",
+                    "status": "not_installed",
+                    "message": "Java is not installed on this system."
+                }
+
         return {
-            "status": "error",
-            "message": f"Error checking version for {tool_name}",
-            "details": str(e)
+            "tool": "java",
+            "status": "installed",
+            "versions": java_versions_info
         }
