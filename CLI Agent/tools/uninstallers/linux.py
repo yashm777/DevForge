@@ -1,219 +1,71 @@
-import subprocess
 import shutil
+import subprocess
 import logging
-import os
-from tools.utils.name_resolver import resolve_tool_name
-from tools.utils.os_utils import (
-    get_available_package_manager,
-    is_sudo_available,
-    is_snap_available,
-)
+from tools.utils.os_utils import get_linux_distro
 
+# Set up logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def run_uninstall_cmd(tool_name: str, manager: str) -> subprocess.CompletedProcess | None:
-    import os
+def handle_tool(tool_name: str, version: str = "latest") -> dict:
+    """
+    Uninstalls a tool on supported Linux distributions using their native package managers.
+    """
+    if shutil.which("sudo") is None:
+        return {
+            "status": "error",
+            "message": "sudo not found. Please install sudo or run as root."
+        }
 
-    try:
-        env = os.environ.copy()
-        env["DEBIAN_FRONTEND"] = "noninteractive"
+    distro = get_linux_distro()
 
-        if ":" in tool_name:
-            tool_name = tool_name.split(":")[0]
-
-        # Build command
-        if manager == "apt":
-            purge_cmd = ["sudo", "apt-get", "purge", "-y", tool_name]
-            autoremove_cmd = ["sudo", "apt-get", "autoremove", "-y"]
-
-            logger.info(f"Running uninstall: {' '.join(purge_cmd)}")
-            purge_result = subprocess.run(purge_cmd, capture_output=True, text=True, env=env)
-
-            logger.info(f"Running autoremove: {' '.join(autoremove_cmd)}")
-            subprocess.run(autoremove_cmd, capture_output=True, text=True, env=env)
-
-            return purge_result
-
-        elif manager == "dnf":
-            cmd = ["sudo", "dnf", "remove", "-y", tool_name]
-        elif manager == "pacman":
-            cmd = ["sudo", "pacman", "-Rns", "--noconfirm", tool_name]
-        elif manager == "apk":
-            cmd = ["sudo", "apk", "del", tool_name]
-        else:
-            logger.error(f"Unsupported package manager: {manager}")
-            return None
-
-        logger.info(f"Running uninstall: {' '.join(cmd)}")
-        return subprocess.run(cmd, capture_output=True, text=True, env=env)
-
-    except Exception as e:
-        logger.error(f"Uninstallation failed for {tool_name}: {e}")
-        return None
-
-def uninstall_with_snap(tool_name: str) -> subprocess.CompletedProcess | None:
-    try:
-        list_cmd = ["snap", "list"]
-        snap_list = subprocess.run(list_cmd, capture_output=True, text=True)
-        if tool_name.lower() not in snap_list.stdout.lower():
-            return None
-
-        cmd = ["sudo", "snap", "remove", tool_name]
-        logger.info(f"Trying snap uninstall: {' '.join(cmd)}")
-        return subprocess.run(cmd, capture_output=True, text=True)
-    except Exception as e:
-        logger.error(f"Snap uninstall failed for {tool_name}: {e}")
-        return None
-
-def get_related_packages(tool_name: str, pkg_manager: str) -> list[str]:
-    tool_name = tool_name.lower()
-    keywords = []
-
-    if tool_name == "java":
-        keywords = ["openjdk", "default-jdk", "default-jre", "jdk", "jre"]
-    elif tool_name in ("c++", "cpp", "g++"):
-        keywords = ["g++"]
-    else:
-        keywords = [tool_name]
-
-    try:
-        if pkg_manager == "apt" and shutil.which("dpkg"):
-            result = subprocess.run(["dpkg", "-l"], capture_output=True, text=True)
-            lines = result.stdout.strip().splitlines()
-            installed_packages = [
-                line.split()[1]
-                for line in lines
-                if line.startswith("ii") and any(k in line.split()[1] for k in keywords)
-            ]
-            return installed_packages
-
-        elif pkg_manager == "dnf":
-            result = subprocess.run(["dnf", "list", "installed"], capture_output=True, text=True)
-            return [line.split()[0] for line in result.stdout.splitlines() if any(k in line for k in keywords)]
-
-        elif pkg_manager == "pacman":
-            result = subprocess.run(["pacman", "-Q"], capture_output=True, text=True)
-            return [line.split()[0] for line in result.stdout.splitlines() if any(k in line for k in keywords)]
-
-        elif pkg_manager == "apk":
-            result = subprocess.run(["apk", "info"], capture_output=True, text=True)
-            return [line.strip() for line in result.stdout.splitlines() if any(k in line for k in keywords)]
-
-        else:
-            logger.warning(f"No implementation for package listing with: {pkg_manager}")
-
-    except Exception as e:
-        logger.error(f"Failed to list packages for '{tool_name}': {e}")
-
-    return []
-
-def clean_java_jvm_dirs() -> list[str]:
-    import os
-    removed = []
-    jvm_path = "/usr/lib/jvm"
-    if os.path.exists(jvm_path):
-        for entry in os.listdir(jvm_path):
-            full_path = os.path.join(jvm_path, entry)
-            if any(kw in entry.lower() for kw in ("java", "jdk", "jre","openjdk")):
-                try:
-                    subprocess.run(["sudo", "rm", "-rf", full_path])
-                    removed.append(full_path)
-                    logger.info(f"Removed JVM directory: {full_path}")
-                except Exception as e:
-                    logger.warning(f"Failed to remove {full_path}: {e}")
-    return removed
-
-def clean_java_symlinks():
-    java_path = shutil.which("java")
-    if java_path:
-        try:
-            subprocess.run(["sudo", "rm", "-f", java_path])
-            logger.info(f"Removed java symlink at {java_path}")
-        except Exception as e:
-            logger.warning(f"Failed to remove java symlink at {java_path}: {e}")
-
-def uninstall_linux_tool(tool: str, version: str = "latest") -> dict:
-    if not is_sudo_available():
-        return {"status": "error", "message": "Sudo access required. Please run `sudo -v` and try again."}
-
-    pkg_manager = get_available_package_manager()
-    if pkg_manager == "unknown":
-        return {"status": "error", "message": "No supported package manager found on this system."}
-
-    resolved = resolve_tool_name(tool, "linux", version)
-    candidate_names = [resolved.get("name", tool)] + resolved.get("snap_alternatives", [])
-
-    # Uninstall related packages (e.g. all java-related)
-    all_uninstalled = []
-    related_packages = get_related_packages(resolved.get("name", tool), pkg_manager)
-    if related_packages:
-        logger.info(f"Found related packages for '{tool}': {related_packages}")
-        for pkg_name in related_packages:
-            result = run_uninstall_cmd(pkg_name, pkg_manager)
-            if result and result.returncode == 0:
-                all_uninstalled.append(pkg_name)
-            else:
-                logger.warning(f"Failed to uninstall related package '{pkg_name}'")
-
-        if all_uninstalled:
-            if tool.lower() == "java":
-                removed_paths = clean_java_jvm_dirs()
-                clean_java_symlinks()
-                return {
-                    "status": "success",
-                    "message": f"Uninstalled related packages for '{tool}': {', '.join(all_uninstalled)}. Also cleaned JVM directories and symlinks.",
-                    "packages": all_uninstalled,
-                    "removed_dirs": removed_paths
-                }
-            else:
-                return {
-                    "status": "success",
-                    "message": f"Uninstalled related packages for '{tool}': {', '.join(all_uninstalled)}",
-                    "packages": all_uninstalled
-                }
-        else:
-            logger.info(f"No related packages were successfully uninstalled for '{tool}'")
-
-    for name in candidate_names:
-        result = run_uninstall_cmd(name, pkg_manager)
-        if result and result.returncode == 0:
-            if tool.lower() == "java":
-                removed_paths = clean_java_jvm_dirs()
-                clean_java_symlinks()
-                return {
-                    "status": "success",
-                    "message": f"Uninstalled '{name}' successfully via {pkg_manager}. Also cleaned JVM directories and symlinks.",
-                    "stdout": result.stdout.strip(),
-                    "removed_dirs": removed_paths
-                }
-            else:
-                return {
-                    "status": "success",
-                    "message": f"Uninstalled '{name}' successfully via {pkg_manager}.",
-                    "stdout": result.stdout.strip()
-                }
-
-    if is_snap_available():
-        for name in candidate_names:
-            snap_result = uninstall_with_snap(name)
-            if snap_result and snap_result.returncode == 0:
-                if tool.lower() == "java":
-                    removed_paths = clean_java_jvm_dirs()
-                    clean_java_symlinks()
-                    return {
-                        "status": "success",
-                        "message": f"Uninstalled '{name}' successfully via snap. Also cleaned JVM directories and symlinks.",
-                        "stdout": snap_result.stdout.strip(),
-                        "removed_dirs": removed_paths
-                    }
-                else:
-                    return {
-                        "status": "success",
-                        "message": f"Uninstalled '{name}' successfully via snap.",
-                        "stdout": snap_result.stdout.strip()
-                    }
-
-    return {
-        "status": "error",
-        "message": f"Failed to uninstall '{tool}' using all known methods."
+    # Command mapping based on distro
+    UNINSTALL_COMMANDS = {
+        "ubuntu":    lambda t: ["sudo", "apt", "remove", "-y", t],
+        "debian":    lambda t: ["sudo", "apt", "remove", "-y", t],
+        "fedora":    lambda t: ["sudo", "dnf", "remove", "-y", t],
+        "centos":    lambda t: ["sudo", "dnf", "remove", "-y", t],
+        "rhel":      lambda t: ["sudo", "dnf", "remove", "-y", t],
+        "arch":      lambda t: ["sudo", "pacman", "-Rns", "--noconfirm", t],
+        "manjaro":   lambda t: ["sudo", "pacman", "-Rns", "--noconfirm", t],
+        "alpine":    lambda t: ["sudo", "apk", "del", t],
     }
+
+    if distro not in UNINSTALL_COMMANDS:
+        logger.error(f"Unsupported Linux distribution: {distro}")
+        return {
+            "status": "error",
+            "message": f"Unsupported Linux distribution: {distro}"
+        }
+
+    command = UNINSTALL_COMMANDS[distro](tool_name)
+
+    try:
+        logger.info(f"Running command: {' '.join(command)}")
+        result = subprocess.run(command, capture_output=True, text=True, check=True)
+
+        logger.info(f"Uninstallation successful: {tool_name}")
+        return {
+            "status": "success",
+            "message": f"{tool_name} uninstalled successfully on {distro}",
+            "details": result.stdout.strip(),
+            "distribution": distro
+        }
+
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Uninstallation failed: {e.stderr.strip()}")
+        return {
+            "status": "error",
+            "message": f"Failed to uninstall {tool_name} on {distro}",
+            "details": e.stderr.strip() if e.stderr else "No additional error details."
+        }
+    except Exception as e:
+        logger.error(f"Unexpected error during uninstallation: {e}")
+        return {
+            "status": "error",
+            "message": f"Unexpected error during uninstallation: {str(e)}"
+        }
+
+# Legacy function for backward compatibility
+def uninstall_tool_linux(tool_name: str, version: str = "latest") -> dict:
+    return handle_tool(tool_name, version)
