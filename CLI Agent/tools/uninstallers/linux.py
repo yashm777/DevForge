@@ -86,6 +86,25 @@ def clean_java_symlinks():
             logger.warning(f"Failed to remove java symlink: {e}")
 
 
+def detect_installed_java_packages() -> list:
+    """
+    Detect installed Java-related packages on Debian/Ubuntu using dpkg-query.
+    Returns a list of package names.
+    """
+    try:
+        result = subprocess.run(
+            ["dpkg-query", "-W", "-f=${binary:Package}\n"],
+            capture_output=True, text=True, check=True
+        )
+        installed = [line.strip() for line in result.stdout.splitlines()]
+        java_pkgs = [pkg for pkg in installed if "openjdk" in pkg or "default-jdk" in pkg or "oracle-java" in pkg]
+        logger.info(f"Detected installed Java packages: {java_pkgs}")
+        return java_pkgs
+    except Exception as e:
+        logger.warning(f"Failed to detect installed Java packages: {e}")
+        return []
+
+
 def uninstall_tool_linux(raw_tool: str, version: str = "latest") -> dict:
     if not is_sudo_available():
         return {"status": "error", "message": "Sudo required. Please run `sudo -v`."}
@@ -100,6 +119,56 @@ def uninstall_tool_linux(raw_tool: str, version: str = "latest") -> dict:
     related_packages = get_related_packages(resolved_name, pkg_manager)
     logger.info(f"Detected related packages for '{raw_tool}': {related_packages}")
 
+    # Enhanced Java package detection: find both JDK and JRE packages installed
+    if raw_tool.lower() == "java":
+        # Additional JRE packages to detect and remove
+        jre_packages = []
+        try:
+            if pkg_manager == "apt":
+                # Query installed jre packages matching patterns
+                dpkg_query_cmd = [
+                    "dpkg-query", "-W", "-f=${Package}\n",
+                    "openjdk-*-jre", "default-jre*"
+                ]
+                result = subprocess.run(dpkg_query_cmd, capture_output=True, text=True)
+                if result.returncode == 0:
+                    jre_packages = [pkg for pkg in result.stdout.splitlines() if pkg.strip()]
+                    logger.info(f"Detected installed JRE packages: {jre_packages}")
+            # You can add support for other package managers here if needed
+        except Exception as e:
+            logger.warning(f"Failed to query JRE packages: {e}")
+
+        # Combine JDK and JRE packages for uninstall
+        combined_packages = set(related_packages) | set(jre_packages)
+        success = []
+        failed = []
+
+        for pkg in combined_packages:
+            if run_uninstall_cmd(pkg, pkg_manager):
+                success.append(pkg)
+            else:
+                failed.append(pkg)
+
+        removed_paths = clean_java_jvm_dirs()
+        clean_java_symlinks()
+
+        extra_hint = (
+            "\nNote: For complete removal, check if any Java versions remain with "
+            "`dpkg --list | grep openjdk` and remove manually if needed."
+        )
+
+        return {
+            "status": "success" if success else "error",
+            "message": (
+                f"Removed Java components: {success}. JVM dirs cleaned: {removed_paths}."
+                + (extra_hint if success else "")
+            ),
+            "removed_dirs": removed_paths,
+            "uninstalled_packages": success,
+            "failed_packages": failed
+        }
+
+    # Non-Java uninstall logic unchanged
     success = []
     failed = []
 
@@ -118,26 +187,6 @@ def uninstall_tool_linux(raw_tool: str, version: str = "latest") -> dict:
         else:
             failed.append(resolved_name)
 
-    # Java special cleanup
-    if raw_tool.lower() == "java":
-        removed_paths = clean_java_jvm_dirs()
-        clean_java_symlinks()
-        extra_hint = (
-            "\nNote: For complete removal, consider running "
-            "`sudo apt-get purge openjdk-<version>-jre:amd64` manually "
-            "if any versions still remain."
-        )
-        return {
-            "status": "success" if success else "error",
-            "message": (
-                f"Removed Java components: {success}. JVM dirs cleaned: {removed_paths}."
-                + (extra_hint if success else "")
-            ),
-            "removed_dirs": removed_paths,
-            "uninstalled_packages": success,
-            "failed_packages": failed
-        }
-
     if success:
         return {
             "status": "success",
@@ -151,3 +200,4 @@ def uninstall_tool_linux(raw_tool: str, version: str = "latest") -> dict:
             "message": f"Failed to uninstall any packages for '{raw_tool}'",
             "failed_packages": failed
         }
+
