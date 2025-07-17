@@ -15,7 +15,7 @@ from tools.uninstallers.windows import uninstall_windows_tool
 from tools.uninstallers.linux import uninstall_linux_tool
 from tools.version_checkers.mac import check_version as check_version_mac
 from tools.version_checkers.windows import check_version as check_version_windows
-from tools.version_checkers.linux import check_version as check_version_linux
+from tools.version_checkers.linux import check_tool_version as check_version_linux
 from tools.upgraders.mac import handle_tool_mac
 from tools.upgraders.windows import handle_tool
 from tools.upgraders.linux import handle_tool
@@ -59,7 +59,7 @@ def check_version(tool, version="latest"):
     elif os_type == "darwin":
         return check_version_mac(tool, version)
     elif os_type == "linux":
-        return check_version_linux(tool, version)
+        return check_version_linux(tool)
     else:
         return {"status": "error", "message": f"Unsupported OS: {os_type}"}
 
