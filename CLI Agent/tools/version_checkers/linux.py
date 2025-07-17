@@ -11,7 +11,7 @@ def get_pkg_manager():
         raise EnvironmentError("No supported package manager found on this Linux system.")
     return pkg_manager
 
-def check_tool_version(tool_name: str, pkg_manager: str | None ):
+def check_tool_version(tool_name: str, pkg_manager: str | None = None ):
     if pkg_manager is None:
         pkg_manager = get_pkg_manager()
     resolved = resolve_tool_name(tool_name, "linux", context="version_check")
