@@ -59,7 +59,7 @@ def check_version(tool, version="latest"):
     elif os_type == "darwin":
         return check_version_mac(tool, version)
     elif os_type == "linux":
-        return check_version_linux(tool,version)
+        return check_version_linux(tool)
     else:
         return {"status": "error", "message": f"Unsupported OS: {os_type}"}
 
@@ -117,6 +117,8 @@ async def mcp_endpoint(request: Request):
             if handler:
                 # uninstall_tool expects only tool param, others also get version
                 if task == "uninstall":
+                    result = handler(tool)
+                elif task == "version":    # Call version check handlers without passing version for Linux
                     result = handler(tool)
                 elif method == "generate_code":
                     description = params.get("description")
