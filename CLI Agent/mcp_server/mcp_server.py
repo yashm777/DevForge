@@ -59,7 +59,7 @@ def check_version(tool, version="latest"):
     elif os_type == "darwin":
         return check_version_mac(tool, version)
     elif os_type == "linux":
-        return check_version_linux(tool)
+        return check_version_linux(tool,version)
     else:
         return {"status": "error", "message": f"Unsupported OS: {os_type}"}
 
