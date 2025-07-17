@@ -1,128 +1,197 @@
+import shutil
 import subprocess
+import os
 import logging
-from tools.utils.os_utils import get_available_package_manager, is_tool_installed
-from tools.utils.name_resolver import resolve_tool_name
 
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class LinuxVersionChecker:
-    def __init__(self):
-        self.pkg_manager = get_available_package_manager()
-        if self.pkg_manager == "unknown":
-            raise EnvironmentError("No supported package manager found on this Linux system.")
+def find_executable(tool_name: str) -> str:
+    tool_aliases = {
+        "python": ["python3", "python"],
+        "pip": ["pip3", "pip"],
+        "node": ["node", "nodejs"],
+        "java": ["java", "javac"],
+    }
+    
+    possible_names = tool_aliases.get(tool_name, [tool_name])
+    
+    for name in possible_names:
+        executable_path = shutil.which(name)
+        if executable_path:
+            return executable_path
+    
+    common_paths = [
+        "/usr/local/bin",
+        "/usr/bin",
+        "/bin",
+        "/usr/sbin",
+        "/sbin",
+        os.path.expanduser("~/.local/bin"),
+    ]
+    
+    for path in common_paths:
+        for name in possible_names:
+            full_path = os.path.join(path, name)
+            if os.path.isfile(full_path) and os.access(full_path, os.X_OK):
+                return full_path
+                
+    return None
 
-    def check_tool_version(self, tool_name: str):
-        # Resolve executable name for version check context
-        resolved = resolve_tool_name(tool_name, "linux", context="version_check")
-        executable = resolved["name"]
 
-        # First check if the executable is in PATH
-        if not is_tool_installed(executable):
-            # Tool not installed according to PATH
-            return {
-                "tool": tool_name,
-                "status": "not_installed",
-                "message": f"'{tool_name}' is not installed on the system."
-            }
+def get_java_versions():
+    java_info = {"installed_versions": [], "active_version": None}
+    
+    try:
+        result = subprocess.run(
+            ["java", "-version"],
+            capture_output=True, text=True, timeout=10, check=True,
+            stderr=subprocess.STDOUT
+        )
+        java_info["active_version"] = result.stdout.strip().split("\n")[0]
+    except Exception as e:
+        logger.warning(f"Failed to get active java version: {e}")
+    
+    try:
+        result = subprocess.run(
+            ["update-alternatives", "--list", "java"],
+            capture_output=True, text=True, timeout=10, check=True
+        )
+        lines = result.stdout.strip().splitlines()
+        java_info["installed_versions"] = lines
+    except Exception:
+        java_info["installed_versions"] = []
+    
+    return java_info
 
-        # Special handling for Java
-        if tool_name.lower() == "java":
-            return self._check_java_versions()
 
-        # Generic version check command: try <executable> --version or -version
-        version = self._run_version_command(executable)
-        if version:
-            return {
-                "tool": tool_name,
-                "status": "installed",
-                "version": version.strip()
-            }
-
-        # If version detection failed but executable present
-        return {
-            "tool": tool_name,
-            "status": "installed",
-            "version": "Unknown version"
-        }
-
-    def _run_version_command(self, executable: str) -> str | None:
-        # Try common flags for version info
-        for flag in ["--version", "-version"]:
-            try:
-                result = subprocess.run([executable, flag], capture_output=True, text=True, timeout=5)
-                if result.returncode == 0 and result.stdout.strip():
-                    return result.stdout.strip()
-                # Some tools print version info on stderr (e.g. java)
-                if result.returncode == 0 and result.stderr.strip():
-                    return result.stderr.strip()
-            except Exception as e:
-                logger.debug(f"Error running version command on {executable} with {flag}: {e}")
-        return None
-
-    def _check_java_versions(self):
-        installed_versions = []
-        java_path = None
-        active_version = None
-           
-        if self.pkg_manager == "apt":
-            try:
-                result = subprocess.run(["dpkg", "-l"], capture_output=True, text=True, timeout=5)
-                if result.returncode == 0:
-                    lines = result.stdout.strip().splitlines()
-                    for line in lines:
-                        if line.startswith("ii") and any(term in line.lower() for term in ["openjdk", "default-jdk", "jdk", "jre"]):
-                            pkg_name = line.split()[1]
-                            installed_versions.append(pkg_name)
-            except Exception as e:
-                logger.error(f"Error checking installed Java packages: {e}")
-            
+def check_version(tool_name: str, version: str = "latest") -> dict:
+    executable_path = find_executable(tool_name)
+    if executable_path:
         try:
-            result = subprocess.run(["which", "java"], capture_output=True, text=True, timeout=5)
-            if result.returncode == 0:
-                java_path = result.stdout.strip()
+            version_commands = [
+                [executable_path, "--version"],
+                [executable_path, "-v"],
+                [executable_path, "-V"],
+                [executable_path, "version"],
+            ]
+            for cmd in version_commands:
+                try:
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=10, check=True)
+                    output = result.stdout.strip() or result.stderr.strip()
+                    if output:
+                        return {
+                            "status": "success",
+                            "message": f"Version information for {tool_name}",
+                            "version": output,
+                            "command": " ".join(cmd),
+                        }
+                except subprocess.CalledProcessError:
+                    continue
         except Exception as e:
-            logger.debug(f"Error running 'which java': {e}")
-
-        active_path = None
-        if java_path:
-            try:
-                result = subprocess.run(["readlink", "-f", java_path], capture_output=True, text=True, timeout=5)
-                if result.returncode == 0:
-                    active_path = result.stdout.strip()
-            except Exception as e:
-                logger.debug(f"Error resolving symlink for java: {e}")
-
-        if active_path:
-            # Example: /usr/lib/jvm/java-17-openjdk-amd64/bin/java → java-17-openjdk-amd64
-            parts = active_path.split("/")
-            for part in parts:
-                if "java-" in part and ("jdk" in part or "jre" in part):
-                    active_version = part
-                    break
-
-        # Compose output
-        versions_output = []
-        for pkg in installed_versions:
-            if active_version and active_version in pkg:
-                versions_output.append(f"{pkg} (active)")
-            else:
-                versions_output.append(pkg)
-
-        # If active version detected but not in installed packages, include it separately
-        if active_version and not any(active_version in pkg for pkg in installed_versions):
-            versions_output.append(f"{active_version} (active but not from package list)")
-
-        if not versions_output:
+            logger.warning(f"Error running version commands for {tool_name}: {e}")
+    
+    # Special case for java
+    if tool_name.lower() == "java":
+        java_versions = get_java_versions()
+        if java_versions["installed_versions"] or java_versions["active_version"]:
             return {
-                "tool": "java",
-                "status": "not_installed",
-                "message": "No Java installations detected on the system."
+                "status": "success",
+                "message": "Java version details",
+                "active_version": java_versions["active_version"],
+                "installed_versions": java_versions["installed_versions"],
             }
+    
+    # Package manager queries
+    try:
+        # Debian/Ubuntu and derivatives
+        if shutil.which("dpkg"):
+            result = subprocess.run(
+                ["dpkg", "-l", tool_name],
+                capture_output=True, text=True, timeout=10, check=True
+            )
+            lines = result.stdout.strip().splitlines()
+            for line in lines:
+                if line.startswith("ii"):
+                    parts = line.split()
+                    if len(parts) >= 3:
+                        return {
+                            "status": "success",
+                            "message": f"Version info from dpkg for {tool_name}",
+                            "version": parts[2],
+                            "source": "dpkg"
+                        }
+        
+        # RPM-based distros
+        if shutil.which("rpm"):
+            result = subprocess.run(
+                ["rpm", "-q", tool_name],
+                capture_output=True, text=True, timeout=10, check=True
+            )
+            output = result.stdout.strip()
+            if output and "not installed" not in output.lower():
+                return {
+                    "status": "success",
+                    "message": f"Version info from rpm for {tool_name}",
+                    "version": output,
+                    "source": "rpm"
+                }
 
-        return {
-            "tool": "java",
-            "status": "installed",
-            "versions": versions_output
-        }
+        # Snap packages
+        if shutil.which("snap"):
+            result = subprocess.run(
+                ["snap", "list", tool_name],
+                capture_output=True, text=True, timeout=10, check=True
+            )
+            lines = result.stdout.strip().splitlines()
+            if len(lines) >= 2:
+                version_line = lines[1].split()
+                if len(version_line) >= 2:
+                    return {
+                        "status": "success",
+                        "message": f"Version info from snap for {tool_name}",
+                        "version": version_line[1],
+                        "source": "snap"
+                    }
 
+        # Pacman (Arch Linux)
+        if shutil.which("pacman"):
+            result = subprocess.run(
+                ["pacman", "-Qi", tool_name],
+                capture_output=True, text=True, timeout=10, check=True
+            )
+            lines = result.stdout.strip().splitlines()
+            for line in lines:
+                if line.lower().startswith("version"):
+                    _, ver = line.split(":", 1)
+                    return {
+                        "status": "success",
+                        "message": f"Version info from pacman for {tool_name}",
+                        "version": ver.strip(),
+                        "source": "pacman"
+                    }
 
+        # Flatpak packages
+        if shutil.which("flatpak"):
+            result = subprocess.run(
+                ["flatpak", "info", tool_name],
+                capture_output=True, text=True, timeout=10, check=True
+            )
+            lines = result.stdout.strip().splitlines()
+            for line in lines:
+                if line.lower().startswith("version"):
+                    _, ver = line.split(":", 1)
+                    return {
+                        "status": "success",
+                        "message": f"Version info from flatpak for {tool_name}",
+                        "version": ver.strip(),
+                        "source": "flatpak"
+                    }
+
+    except Exception as e:
+        logger.warning(f"Package manager query failed: {e}")
+    
+    return {
+        "status": "error",
+        "message": f"{tool_name} is not installed, not in PATH, or version could not be determined."
+    }
