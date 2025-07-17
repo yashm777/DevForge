@@ -48,7 +48,7 @@ def install_with_package_manager(tool: str, resolved_tool: str, manager: str, fa
         return {
             "status": "success",
             "message": message,
-            "stdout": resolved_result.stdout.strip(),
+           # "stdout": resolved_result.stdout.strip(),
             "warnings": resolved_result.stderr.strip() or None
         }
 
@@ -65,7 +65,7 @@ def install_with_package_manager(tool: str, resolved_tool: str, manager: str, fa
             return {
                 "status": "success",
                 "message": f"Installed '{tool}' via {manager} (fallback).",
-                "stdout": raw_result.stdout.strip(),
+              #  "stdout": raw_result.stdout.strip(),
                 "warnings": raw_result.stderr.strip() or None
             }
 
@@ -106,7 +106,7 @@ def install_with_snap(resolved_tool: str, classic_snap: bool = False, fallback_m
         return {
             "status": "success",
             "message": message,
-            "stdout": snap_result.stdout.strip(),
+          #  "stdout": snap_result.stdout.strip(),
             "warnings": snap_result.stderr.strip() or None
         }
 
