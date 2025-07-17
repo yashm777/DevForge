@@ -39,7 +39,7 @@ def start_server_background(host: str = "localhost", port: int = 8000) -> Option
             # If server didn't start, try to terminate the process
             try:
                 process.terminate()
-                process.wait(timeout=5)
+                process.wait(timeout=20)
             except:
                 pass
             return None
@@ -47,7 +47,7 @@ def start_server_background(host: str = "localhost", port: int = 8000) -> Option
     except Exception:
         return None
 
-def ensure_server_running(host: str = "localhost", port: int = 8000, timeout: int = 30) -> bool:
+def ensure_server_running(host: str = "localhost", port: int = 8000, timeout: int = 60) -> bool:
     """
     Ensure the MCP server is running, starting it if necessary.
     
