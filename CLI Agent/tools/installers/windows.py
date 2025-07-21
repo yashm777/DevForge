@@ -2,6 +2,15 @@ import subprocess
 import re
 
 def install_windows_tool(tool, version="latest"):
+    # Map common aliases to known winget package IDs for Java
+    java_aliases = {
+        "java": "EclipseAdoptium.Temurin.17.JDK",
+        "jdk": "EclipseAdoptium.Temurin.17.JDK",
+        "openjdk": "EclipseAdoptium.Temurin.17.JDK"
+    }
+    tool_lower = tool.strip().lower()
+    if tool_lower in java_aliases:
+        tool = java_aliases[tool_lower]
     # First, try to search for the tool to see if there are multiple matches
     search_cmd = ["winget", "search", tool]
     try:
