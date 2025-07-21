@@ -8,8 +8,12 @@ def is_git_installed() -> bool:
     """
     Check if Git is installed on the system.
     """
-    result = subprocess.run(["which", "git"], capture_output=True, text=True)
-    return result.returncode == 0
+    try:
+        result = subprocess.run(["which", "git"], capture_output=True, text=True)
+        return result.returncode == 0
+    except FileNotFoundError:
+        # The 'which' command itself not found, treat as git not installed
+        return False
 
 
 def prompt_git_credentials() -> tuple[str, str]:
@@ -45,7 +49,7 @@ def generate_ssh_key(email: str, key_path: str = "~/.ssh/id_rsa"):
         print("SSH key already exists at:", key_path)
 
 
-def clone_repository(repo_url: str, dest_dir: str = None):
+def clone_repository(repo_url: str, dest_dir: str = None, branch: str = None):
     """
     Clone the given Git repository to the optional destination directory.
     """

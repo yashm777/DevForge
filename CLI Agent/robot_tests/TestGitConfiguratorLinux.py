@@ -1,12 +1,12 @@
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from tools.git_configurator.linux import (
     is_git_installed,
     clone_repository,
     generate_ssh_key,
     switch_branch,
 )
-from pathlib import Path
+# from pathlib import Path
 
 class TestGitConfiguratorLinux(unittest.TestCase):
 
@@ -22,14 +22,14 @@ class TestGitConfiguratorLinux(unittest.TestCase):
 
     @patch("builtins.input", return_value="https://github.com/example/repo.git")
     @patch("subprocess.run")
-    def test_clone_repository_success(self, mock_run, mock_input):
+    def test_clone_repository_success(self, mock_run, _mock_input):
         mock_run.return_value.returncode = 0
         clone_repository("https://github.com/example/repo.git", branch="main")
         mock_run.assert_called()
 
     @patch("getpass.getpass", return_value="testpassword")
     @patch("builtins.input", return_value="testuser")
-    def test_generate_ssh_key(self, mock_input, mock_getpass):
+    def test_generate_ssh_key(self, _mock_input, _mock_getpass):
         with patch("os.path.exists", return_value=False), \
              patch("subprocess.run") as mock_run:
             mock_run.return_value.returncode = 0
@@ -38,7 +38,7 @@ class TestGitConfiguratorLinux(unittest.TestCase):
 
     @patch("pathlib.Path.exists", return_value=True)
     @patch("subprocess.run")
-    def test_switch_branch(self, mock_run, mock_exists):
+    def test_switch_branch(self, mock_run, _mock_exists):
        mock_run.return_value.returncode = 0
        switch_branch("/tmp", "main")
        self.assertTrue(mock_run.called)
