@@ -50,6 +50,14 @@ AVAILABLE_TOOLS = {
         "params": {
             "description": "Description of the code to generate"
         }
+    },
+    "system_config": {
+        "description": "Perform system configuration tasks like checking env vars or modifying PATH",
+        "params": {
+            "action": "The system_config action to perform (e.g. check, set, append_to_path, remove_from_path, is_port_open, is_service_running, remove_env, list_env)",
+            "tool_name": "The name of the variable, service, or path to act on",
+            "value": "Optional value (used with 'set')"
+        }
     }
 }
 
@@ -62,11 +70,17 @@ def build_prompt(user_input: str) -> str:
         "IMPORTANT: For install, uninstall, update, and version actions, use method 'tool_action_wrapper' with params containing 'task' and 'tool_name'.\n"
         "For system info, use method 'info://server' with empty params.\n"
         "For code generation, use method 'generate_code' with 'description' param.\n\n"
+        "For system configuration (e.g., environment variables, services, ports), use method 'tool_action_wrapper' with task='system_config', and include:\n"
+        "  - action: check, set, append_to_path, remove_from_path, is_port_open, is_service_running, remove_env, list_env\n"
+        "  - tool_name: the variable, port, or path\n"
+        "  - value: only if needed (e.g., with 'set')\n"
+        "If the user instruction requires multiple actions, return them as a JSON array.\n\n"
         "Examples:\n"
         "- Install: {'method': 'tool_action_wrapper', 'params': {'task': 'install', 'tool_name': 'docker'}}\n"
         "- Version check: {'method': 'tool_action_wrapper', 'params': {'task': 'version', 'tool_name': 'python'}}\n"
         "- System info: {'method': 'info://server', 'params': {}}\n"
         "- Generate code: {'method': 'generate_code', 'params': {'description': 'hello world function'}}\n\n"
+        "- System config: {'method': 'tool_action_wrapper', 'params': {'task': 'system_config', 'action': 'check', 'tool_name': 'JAVA_HOME'}}\n\n"
         "Given the user's instruction, identify the correct tool and return a JSON object with the method and params for a JSON-RPC 2.0 call.\n"
         "ONLY return valid JSON with no extra explanation.\n\n"
         f"User input: \"{user_input}\""

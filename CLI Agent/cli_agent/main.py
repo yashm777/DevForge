@@ -3,6 +3,8 @@
 import sys
 import subprocess
 from typing import Dict, Any
+from typing import Optional
+
 
 import typer
 from rich.console import Console
@@ -23,7 +25,7 @@ app = typer.Typer(
 )
 
 # Global HTTP MCP client
-mcp_client = None
+mcp_client = HTTPMCPClient(base_url="http://localhost:8000")
 
 def format_result(result: Dict[str, Any]) -> str:
     """Format the result object into a clean, readable string or table"""
@@ -91,70 +93,31 @@ def run(
                 if "fallback" in parsed:
                     console.print(f"[yellow]Suggestion: {parsed['fallback']}[/yellow]")
                 return
-            action = parsed.get("action") or parsed.get("params", {}).get("task")
-            tool_name = parsed.get("tool_name") or parsed.get("params", {}).get("tool_name")
-            version = parsed.get("version", "latest") if "version" in parsed else parsed.get("params", {}).get("version", "latest")
-            # Handle code generation
-            if parsed.get("method") == "generate_code":
-                description = parsed["params"].get("description", "")
-                code = mcp_client.generate_code(description)
-                if code and not code.startswith("[Error]"):
-                    if output_file:
-                        with open(output_file, 'w', encoding='utf-8') as f:
-                            f.write(code)
-                        console.print(f"[green]Code written to {output_file}[/green]")
-                    else:
-                        syntax = Syntax(code, "python", theme="monokai", line_numbers=True)
-                        console.print(Panel(syntax, title="Generated Code", border_style="green"))
-                else:
-                    console.print(f"[red]Code generation failed: {code}[/red]")
-            elif action == "install":
-                result = mcp_client.tool_action(action, tool_name, version)
-                result_data = result.get("result", result)
-                if result_data.get("status") == "ambiguous":
-                    options = result_data.get("options", [])
-                    if options:
-                        table = Table(title="Multiple Packages Found", show_lines=True)
-                        table.add_column("No.", style="cyan", justify="right")
-                        table.add_column("Name", style="bold")
-                        table.add_column("ID")
-                        table.add_column("Source")
-                        for idx, opt in enumerate(options, 1):
-                            table.add_row(str(idx), opt["name"], opt["id"], opt["source"])
-                        console.print(table)
-                        choice = typer.prompt("Enter the number of the package you want to install", type=int)
-                        if 1 <= choice <= len(options):
-                            selected = options[choice-1]
-                            console.print(f"[green]Installing {selected['name']} (ID: {selected['id']})...[/green]")
-                            # Only use the ID for the next call!
-                            result2 = mcp_client.tool_action(action, selected['id'], version)
-                            result2_data = result2.get("result", result2)
-                            if result2_data.get("status") == "ambiguous":
-                                console.print("[red]Still ambiguous after selecting a package. Please specify a more unique package ID or install manually.[/red]")
-                                console.print(f"Raw output: {result2_data.get('raw', 'No raw output available')}")
-                                return
-                            formatted_result = format_result(result2)
-                            console.print(Panel(formatted_result, title=f"{action.capitalize()} {selected['name']}", border_style="green"))
+            # Support multiple actions from LLM by handling both dict and list
+            if isinstance(parsed, dict):
+                parsed = [parsed]
+
+            for i, command in enumerate(parsed, start=1):
+                method = command.get("method")
+                params = command.get("params", {})
+
+                if method == "generate_code":
+                    description = params.get("description", "")
+                    code = mcp_client.generate_code(description)
+                    if code and not code.startswith("[Error]"):
+                        if output_file:
+                            with open(output_file, 'w', encoding='utf-8') as f:
+                                f.write(code)
+                            console.print(f"[green]Code written to {output_file}[/green]")
                         else:
-                            console.print("[red]Invalid selection. Aborting.[/red]")
-                            return
+                            syntax = Syntax(code, "python", theme="monokai", line_numbers=True)
+                            console.print(Panel(syntax, title="Generated Code", border_style="green"))
                     else:
-                        console.print("[red]No package options found in ambiguous result.[/red]")
-                        console.print(f"Raw output: {result_data.get('raw', 'No raw output available')}")
-                        return
+                        console.print(f"[red]Code generation failed: {code}[/red]")
                 else:
+                    result = mcp_client.call_jsonrpc(method, params)
                     formatted_result = format_result(result)
-                    console.print(Panel(formatted_result, title=f"{action.capitalize()} {tool_name}", border_style="green"))
-            elif action in ("uninstall", "update", "version"):
-                result = mcp_client.tool_action(action, tool_name, version)
-                formatted_result = format_result(result)
-                console.print(Panel(formatted_result, title=f"{action.capitalize()} {tool_name}", border_style="green"))
-            elif parsed.get("method") and parsed.get("params") is not None:
-                result = mcp_client.call_jsonrpc(parsed["method"], parsed["params"])
-                formatted_result = format_result(result)
-                console.print(Panel(formatted_result, title=f"{parsed['method']}", border_style="green"))
-            else:
-                console.print(f"[red]Unknown or unsupported action: {action}[/red]")
+                    console.print(Panel(formatted_result, title=f"Step {i}: {method}", border_style="green"))
         except Exception as e:
             console.print(f"[red]Error executing command: {str(e)}[/red]")
 
@@ -175,6 +138,109 @@ def server(
         console.print("\n[yellow]Server stopped by user[/yellow]")
     except Exception as e:
         console.print(f"[red]Error starting server: {str(e)}[/red]")
+
+
+@app.command()
+def check(var: str):
+    """
+    Check if an environment variable is set.
+    """
+    global mcp_client
+    if mcp_client is None:
+        mcp_client = HTTPMCPClient(base_url="http://localhost:8000")
+    
+    result = mcp_client.system_config(action="check", tool_name=var)
+    console.print(Panel(str(result), title="System Config: Check"))
+
+
+@app.command()
+def path_add(path: str):
+    """
+    Append a directory to the user's PATH.
+    """
+    global mcp_client
+    if mcp_client is None:
+        mcp_client = HTTPMCPClient(base_url="http://localhost:8000")
+    
+    result = mcp_client.system_config(action="append_to_path", tool_name=path)
+    console.print(Panel(str(result), title="System Config: PATH Update"))
+
+@app.command()
+def check_port(port: int):
+    """
+    Check if a specific port is open or in use.
+    """
+    global mcp_client
+    if mcp_client is None:
+        mcp_client = HTTPMCPClient(base_url="http://localhost:8000")
+
+    result = mcp_client.system_config(action="is_port_open", tool_name=str(port))
+    console.print(Panel(str(result), title=f"System Config: Port {port}"))
+
+
+@app.command()
+def check_service(service: str):
+    """
+    Check if a given Windows service is running.
+    """
+    global mcp_client
+    if mcp_client is None:
+        mcp_client = HTTPMCPClient(base_url="http://localhost:8000")
+
+    result = mcp_client.system_config(action="is_service_running", tool_name=service)
+    console.print(Panel(str(result), title=f"System Config: Service '{service}'"))
+
+@app.command()
+def set_env(var: str, value: str):
+    """
+    Set a persistent environment variable on Windows.
+    """
+    global mcp_client
+    if mcp_client is None:
+        mcp_client = HTTPMCPClient(base_url="http://localhost:8000")
+
+    result = mcp_client.system_config(action="set", tool_name=var, value=value)
+    console.print(Panel(str(result), title=f"System Config: Set {var}"))
+
+@app.command()
+def remove_env(var: str):
+    """
+    Remove a persistent environment variable.
+    """
+    global mcp_client
+    if mcp_client is None:
+        mcp_client = HTTPMCPClient(base_url="http://localhost:8000")
+
+    result = mcp_client.system_config(action="remove_env", tool_name=var)
+    console.print(Panel(str(result), title=f"System Config: Remove {var}"))
+
+@app.command()
+def list_env():
+    """
+    List all environment variables.
+    """
+    global mcp_client
+    if mcp_client is None:
+        mcp_client = HTTPMCPClient(base_url="http://localhost:8000")
+
+    result = mcp_client.system_config(action="list_env", tool_name="")
+    console.print(Panel(str(result), title="System Config: All Environment Variables"))
+
+@app.command()
+def remove_path(path: str):
+    """
+    Remove a directory from the PATH variable.
+    """
+    global mcp_client
+    if mcp_client is None:
+        mcp_client = HTTPMCPClient(base_url="http://localhost:8000")
+
+    result = mcp_client.system_config(action="remove_from_path", tool_name=path)
+    console.print(Panel(str(result), title="System Config: Remove PATH"))
+
+
+
+
 
 def main():
     """Main entry point"""

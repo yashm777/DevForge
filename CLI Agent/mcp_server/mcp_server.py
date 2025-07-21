@@ -19,6 +19,7 @@ from tools.version_checkers.linux import check_version as check_version_linux
 from tools.upgraders.mac import handle_tool_mac
 from tools.upgraders.windows import handle_tool
 from tools.upgraders.linux import handle_tool
+from tools.system_config import windows 
 import traceback
 
 
@@ -84,6 +85,31 @@ def get_system_info():
         "user": os.getenv("USERNAME") or os.getenv("USER") or "unknown"
     }
 
+def handle_system_config(tool, action="check", value=None):
+    os_type = platform.system().lower()
+    if os_type != "windows":
+        return {"status": "error", "message": f"System config tools not implemented for {os_type}"}
+
+    if action == "check":
+        return windows.check_env_variable(tool)
+    elif action == "set":
+        return windows.set_env_variable(tool, value)
+    elif action == "append_to_path":
+        return windows.append_to_path(tool)
+    elif action == "is_port_open":
+        return windows.is_port_open(int(tool))
+    elif action == "is_service_running":
+        return windows.is_service_running(tool)
+    elif action == "remove_env":
+        return windows.remove_env_variable(tool)
+    elif action == "list_env":
+        return windows.list_env_variables()
+    elif action == "remove_from_path":
+        return windows.remove_from_path(tool)
+
+    else:
+        return {"status": "error", "message": f"Unknown system_config action: {action}"}
+
 
 # Task dispatch dictionary
 task_handlers = {
@@ -92,6 +118,8 @@ task_handlers = {
     "update": upgrade_tool,
     "upgrade": upgrade_tool,
     "version": check_version,
+    "system_config": handle_system_config,
+
 }
 
 
@@ -114,13 +142,15 @@ async def mcp_endpoint(request: Request):
             version = params.get("version", "latest")
 
             handler = task_handlers.get(task)
+            
             if handler:
                 # uninstall_tool expects only tool param, others also get version
-                if task == "uninstall":
+                if task == "system_config":
+                    action = params.get("action", "check")
+                    value = params.get("value", None)
+                    result = handler(tool, action, value)
+                elif task == "uninstall":
                     result = handler(tool)
-                elif method == "generate_code":
-                    description = params.get("description")
-                    result = generate_code(description)
                 else:
                     result = handler(tool, version)
             else:
