@@ -55,3 +55,27 @@ class HTTPMCPClient:
     
     def call_jsonrpc(self, method: str, params: dict):
         return self._make_request(method, params)
+    
+    def git_setup(
+        self,
+        action: str,
+        repo_url: str = "",
+        branch: str = "",
+        username: str = "",
+        email: str = "",
+        dest_dir: str = ""
+    ):
+        """
+        Perform git-related setup actions via the MCP server.
+        Supported actions: 'clone', 'switch_branch', 'generate_ssh_key'
+        """
+        params = {
+            "task": "git_setup",
+            "action": action,
+            "repo_url": repo_url,
+            "branch": branch,
+            "username": username,
+            "email": email,
+            "dest_dir": dest_dir
+        }
+        return self._make_request("tool_action_wrapper", params)
