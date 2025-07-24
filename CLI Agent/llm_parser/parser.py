@@ -51,18 +51,6 @@ AVAILABLE_TOOLS = {
         "params": {
             "description": "Description of the code to generate"
         }
-    },
-    "git_configurator": {
-        "description": "Configure Git settings, generate SSH keys, set up GitHub authentication, and manage branches",
-        "params": {
-            "action": "Action to perform (e.g., check_installation, clone_repo, set_credentials, generate_ssh_key, switch_branch, create_branch)",
-            "repo_url": "URL of the repository to clone (required for clone_repo)",
-            "branch_name": "Name of the branch to switch to or create (required for switch_branch or create_branch)",
-            "username": "GitHub username (required for set_credentials)",
-            "email": "GitHub email (optional for set_credentials)",
-            "use_ssh": "Whether to use SSH for authentication (boolean, optional)",
-            "destination": "Destination directory for cloning (optional)"
-        }
     }
 }
 
@@ -104,19 +92,12 @@ def build_prompt(user_input: str) -> str:
         "IMPORTANT: For install, uninstall, update, and version actions, use method 'tool_action_wrapper' "
         "with params containing 'task' and 'tool_name'.\n"
         "For system info, use method 'info://server' with empty params.\n"
-        "For code generation, use method 'generate_code' with 'description' param.\n"
-        "For Git configuration and operations (e.g., check installation, clone repo, set credentials, generate SSH key, switch/create branch), use method 'git_configurator' with appropriate params as described in the tool schema.\n\n"
+        "For code generation, use method 'generate_code' with 'description' param.\n\n"
         "Examples:\n"
         "- Install: {'method': 'tool_action_wrapper', 'params': {'task': 'install', 'tool_name': 'docker'}}\n"
         "- Version check: {'method': 'tool_action_wrapper', 'params': {'task': 'version', 'tool_name': 'python'}}\n"
         "- System info: {'method': 'info://server', 'params': {}}\n"
-        "- Generate code: {'method': 'generate_code', 'params': {'description': 'hello world function'}}\n"
-        "- Git check installation: {'method': 'git_configurator', 'params': {'action': 'check_installation'}}\n"
-        "- Git clone repo: {'method': 'git_configurator', 'params': {'action': 'clone_repo', 'repo_url': 'https://github.com/example/repo.git', 'destination': '/path/to/dir'}}\n"
-        "- Git set credentials: {'method': 'git_configurator', 'params': {'action': 'set_credentials', 'username': 'your-username', 'email': 'your@email.com'}}\n"
-        "- Git generate SSH key: {'method': 'git_configurator', 'params': {'action': 'generate_ssh_key'}}\n"
-        "- Git switch branch: {'method': 'git_configurator', 'params': {'action': 'switch_branch', 'branch_name': 'feature-branch'}}\n"
-        "- Git create branch: {'method': 'git_configurator', 'params': {'action': 'create_branch', 'branch_name': 'new-branch'}}\n\n"
+        "- Generate code: {'method': 'generate_code', 'params': {'description': 'hello world function'}}\n\n"
         f"{additional_guidance}\n\n"
         "Given the user's instruction, identify the correct tool and return a JSON object with the method and params for a JSON-RPC 2.0 call.\n"
         "ONLY return valid JSON with no extra explanation.\n\n"
