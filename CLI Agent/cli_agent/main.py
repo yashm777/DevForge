@@ -89,6 +89,7 @@ def setup_instances():
     """Initialize global instances"""
     global mcp_client
     if mcp_client is None:
+        # Ensure MCP server is running before creating client
         try:
             with console.status("[bold yellow]Checking MCP server status..."):
                 started, error_message = ensure_server_running()
@@ -106,7 +107,6 @@ def setup_instances():
             console.print(traceback.format_exc())
             return False
     return True
-
 
 @app.command()
 def run(

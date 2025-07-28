@@ -58,7 +58,6 @@ def ensure_server_running(host: str = "localhost", port: int = 8000, timeout: in
         if is_server_running(host, port):
             return True, None
 
-        # Start the server in background
         process = subprocess.Popen(
             [sys.executable, "-m", "mcp_server.mcp_server", "--host", host, "--port", str(port)],
             stdout=subprocess.PIPE,
