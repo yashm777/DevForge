@@ -110,7 +110,7 @@ def parse_user_command(user_input: str) -> Dict[str, Any]:
     if not OPENAI_API_KEY:
         return {
             "error": "OpenAI API key not set. Please set OPENAI_API_KEY environment variable.",
-            "fallback": "Try using specific commands like 'install docker' or 'check version nodejs'"
+            "fallback": "Your OpenAI API Key should look like sk-[20 characters]T3BlbkFJ[20 characters]"
         }
 
     try:
