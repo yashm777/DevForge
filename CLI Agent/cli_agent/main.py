@@ -74,14 +74,24 @@ def setup_instances():
     global mcp_client
     if mcp_client is None:
         # Ensure MCP server is running before creating client
-        with console.status("[bold yellow]Checking MCP server status..."):
-            started = ensure_server_running()
-            if not started:
-                console.print("[red]Failed to start MCP server. See error output above for details.[/red]")
-                return False
-            else:
-                console.print("[green]✓ MCP server is running[/green]")
-        mcp_client = HTTPMCPClient()
+        try:
+            with console.status("[bold yellow]Checking MCP server status..."):
+                started = ensure_server_running()
+                if not started:
+                    console.print("[red]Failed to start MCP server. See error output above for details.[/red]")
+                    # Print additional error info if available
+                    import traceback
+                    console.print("[red]Exception details (if any):[/red]")
+                    console.print(traceback.format_exc())
+                    return False
+                else:
+                    console.print("[green]✓ MCP server is running[/green]")
+            mcp_client = HTTPMCPClient()
+        except Exception as e:
+            import traceback
+            console.print("[red]Exception while starting MCP server:[/red]")
+            console.print(traceback.format_exc())
+            return False
     return True
 
 @app.command()
@@ -250,4 +260,4 @@ def main():
     app()
 
 if __name__ == "__main__":
-    main() 
+    main()
