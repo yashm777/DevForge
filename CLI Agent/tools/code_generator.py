@@ -23,17 +23,10 @@ def generate_code(description: str) -> Dict[str, Any]:
     Returns:
         Dict[str, Any]: Dictionary containing status and generated code or error message
     """
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return {
-            "status": "error", 
-            "message": "OPENAI_API_KEY not set. Cannot generate code."
-        }
-    
     try:
-        client = openai.OpenAI(api_key=api_key)
+        client = openai.OpenAI()  # Let OpenAI library handle API key discovery
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4",
             messages=[
                 {
                     "role": "system", 
@@ -71,15 +64,8 @@ def generate_code_with_explanation(description: str) -> Dict[str, Any]:
     Returns:
         Dict[str, Any]: Dictionary containing status, generated code, and explanation
     """
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return {
-            "status": "error", 
-            "message": "OPENAI_API_KEY not set. Cannot generate code."
-        }
-    
     try:
-        client = openai.OpenAI(api_key=api_key)
+        client = openai.OpenAI()  # Let OpenAI library handle API key discovery
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
