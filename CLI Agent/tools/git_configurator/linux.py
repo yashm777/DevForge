@@ -50,6 +50,9 @@ def generate_ssh_key(email: str, key_path: str = "~/.ssh/id_rsa"):
     """
     Generate a new SSH key if it doesn't already exist.
     """
+    if not ensure_ssh_keygen_installed():
+        raise RuntimeError("ssh-keygen is not installed and could not be installed automatically. Please install it manually with 'sudo apt install openssh-client'.")
+
     if not email or "@" not in email:
         raise ValueError("A valid email address is required to generate an SSH key.")
     key_path = os.path.expanduser(key_path)
@@ -154,3 +157,23 @@ def perform_git_setup(
             return {"status": "error", "message": f"Unsupported action: {action}. Valid actions are: {', '.join(valid_actions)}"}
     except Exception as e:
         return {"status": "error", "action": action, "message": str(e)}
+
+
+def ensure_ssh_keygen_installed():
+    """
+    Ensure ssh-keygen is installed. If not, try to install it (Ubuntu/Debian only).
+    """
+    if shutil.which("ssh-keygen") is not None:
+        return True
+    try:
+        print("ssh-keygen not found. Attempting to install openssh-client...")
+        subprocess.run(
+            ["sudo", "apt-get", "update"], check=True
+        )
+        subprocess.run(
+            ["sudo", "apt-get", "install", "-y", "openssh-client"], check=True
+        )
+        return shutil.which("ssh-keygen") is not None
+    except Exception as e:
+        print(f"Failed to install openssh-client: {e}")
+        return False
