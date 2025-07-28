@@ -24,12 +24,12 @@ def is_server_running(host: str = "localhost", port: int = 8000) -> bool:
             return False
             
         # Then check if the MCP endpoint responds
-        response = requests.get(f"http://{host}:{port}/docs", timeout=2)
+        response = requests.get(f"http://{host}:{port}/docs", timeout=4)
         return response.status_code == 200
     except Exception:
         return False
 
-def wait_for_server(host: str = "localhost", port: int = 8000, timeout: int = 30) -> bool:
+def wait_for_server(host: str = "localhost", port: int = 8000, timeout: int = 100) -> bool:
     """
     Wait for the server to become available.
     

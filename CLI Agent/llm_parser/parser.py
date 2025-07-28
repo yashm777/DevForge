@@ -51,6 +51,29 @@ AVAILABLE_TOOLS = {
         "params": {
             "description": "Description of the code to generate"
         }
+    },
+    "git_clone": {
+        "description": "Clone a Git repository to a local directory",
+        "params": {
+            "repo_url": "URL of the Git repository to clone",
+            "dest_dir": "Destination directory (optional)",
+            "branch": "Branch to checkout after cloning (optional)"
+        }
+    },
+    "git_switch_branch": {
+        "description": "Switch to a branch in a local Git repository (creates it if it doesn't exist)",
+        "params": {
+            "dest_dir": "Path to the local Git repository",
+            "branch": "Branch name to switch to",
+            "username": "GitHub username (optional, for configuring credentials)",
+            "email": "GitHub email (optional, for configuring credentials)"
+        }
+    },
+    "git_generate_ssh_key": {
+        "description": "Generate a new SSH key for GitHub",
+        "params": {
+            "email": "Email address to associate with the SSH key"
+        }
     }
 }
 
@@ -92,7 +115,11 @@ def build_prompt(user_input: str) -> str:
         "IMPORTANT: For install, uninstall, update, and version actions, use method 'tool_action_wrapper' "
         "with params containing 'task' and 'tool_name'.\n"
         "For system info, use method 'info://server' with empty params.\n"
-        "For code generation, use method 'generate_code' with 'description' param.\n\n"
+        "For code generation, use method 'generate_code' with 'description' param.\n"
+        "For git actions (clone, switch_branch, generate_ssh_key), always use method 'tool_action_wrapper' with params:\n"
+        "    - 'task': 'git_setup'\n"
+        "    - 'action': 'clone', 'switch_branch', or 'generate_ssh_key'\n"
+        "    - plus the required parameters for each action.\n\n"
         "Examples:\n"
         "- Install: {'method': 'tool_action_wrapper', 'params': {'task': 'install', 'tool_name': 'docker'}}\n"
         "- Version check: {'method': 'tool_action_wrapper', 'params': {'task': 'version', 'tool_name': 'python'}}\n"
