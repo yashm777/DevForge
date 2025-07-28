@@ -47,49 +47,37 @@ def start_server_background(host: str = "localhost", port: int = 8000) -> Option
     except Exception:
         return None
 
-def ensure_server_running(host: str = "localhost", port: int = 8000, timeout: int = 60) -> bool:
+def ensure_server_running(host: str = "localhost", port: int = 8000, timeout: int = 60):
     """
     Ensure the MCP server is running, starting it if necessary.
-    
-    Args:
-        host (str): Host to bind to (default: localhost)
-        port (int): Port to bind to (default: 8000)
-        timeout (int): Maximum time to wait for server to start (default: 30)
-        
+
     Returns:
-        bool: True if server is running, False otherwise
+        (bool, str|None): (True, None) if running, (False, error_message) if failed
     """
     try:
-        # Check if server is already running
         if is_server_running(host, port):
-            return None
-            
-        # Start the server in background
+            return True, None
+
         process = subprocess.Popen(
             [sys.executable, "-m", "mcp_server.mcp_server", "--host", host, "--port", str(port)],
-            stdout=subprocess.PIPE,  # <--- changed from DEVNULL
-            stderr=subprocess.PIPE,  # <--- changed from DEVNULL
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             start_new_session=True
         )
-        
-        # Wait a bit for the server to start
+
         time.sleep(2)
-        
-        # Check if server is now running
+
         if is_server_running(host, port):
-            return process
+            return True, None
         else:
-            # If server didn't start, print error output
             try:
                 out, err = process.communicate(timeout=5)
-                print("[MCP Server stdout]:", out.decode(errors="ignore"))
-                print("[MCP Server stderr]:", err.decode(errors="ignore"))
+                error_message = f"[MCP Server stdout]:\n{out.decode(errors='ignore')}\n[MCP Server stderr]:\n{err.decode(errors='ignore')}"
                 process.terminate()
                 process.wait(timeout=5)
             except Exception as e:
-                print(f"Error terminating MCP server process: {e}")
-            return None
-            
+                error_message = f"Error terminating MCP server process: {e}"
+            return False, error_message
+
     except Exception as e:
-        print(f"Exception while starting MCP server: {e}")
-        return None
+        return False, f"Exception while starting MCP server: {e}"

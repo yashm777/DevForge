@@ -76,13 +76,11 @@ def setup_instances():
         # Ensure MCP server is running before creating client
         try:
             with console.status("[bold yellow]Checking MCP server status..."):
-                started = ensure_server_running()
+                started, error_message = ensure_server_running()
                 if not started:
-                    console.print("[red]Failed to start MCP server. See error output above for details.[/red]")
-                    # Print additional error info if available
-                    import traceback
-                    console.print("[red]Exception details (if any):[/red]")
-                    console.print(traceback.format_exc())
+                    console.print("[red]Failed to start MCP server.[/red]")
+                    if error_message:
+                        console.print(f"[red]Server error details:[/red]\n{error_message}")
                     return False
                 else:
                     console.print("[green]✓ MCP server is running[/green]")
