@@ -142,6 +142,29 @@ def get_server_logs(lines: int = 50):
     """Get the last N log entries"""
     return list(server_logs)[-lines:]
 
+def git_setup_dispatcher(action, repo_url="", branch="", username="", email="", dest_dir=""):
+    os_type = platform.system().lower()
+    if os_type == "darwin":
+        return perform_git_setup_mac(
+            action=action,
+            repo_url=repo_url,
+            branch=branch,
+            username=username,
+            email=email,
+            dest_dir=dest_dir
+        )
+    elif os_type == "linux":
+        return perform_git_setup_linux(
+            action=action,
+            repo_url=repo_url,
+            branch=branch,
+            username=username,
+            email=email,
+            dest_dir=dest_dir
+        )
+    else:
+        return {"status": "error", "message": f"Git setup is not supported on OS: {os_type}"}
+
 # Task dispatch dictionary
 task_handlers = {
     "install": install_tool,
@@ -150,6 +173,7 @@ task_handlers = {
     "update": upgrade_tool,
     "upgrade": upgrade_tool,
     "version": check_version,
+    "git_setup": git_setup_dispatcher, 
 }
 
 @app.post("/mcp/")
@@ -247,6 +271,15 @@ async def mcp_endpoint(request: Request):
                     elif task == "install_by_id":
                         package_id = params.get("package_id")
                         result = handler(package_id, version)
+                    elif task == "git_setup":
+                        result = handler(
+                            action=params.get("action"),
+                            repo_url=params.get("repo_url", ""),
+                            branch=params.get("branch", ""),
+                            username=params.get("username", ""),
+                            email=params.get("email", ""),
+                            dest_dir=params.get("dest_dir", "")
+                        )
                     else:
                         result = handler(tool, version)
                 else:
