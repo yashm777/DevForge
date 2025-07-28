@@ -8,6 +8,10 @@ It can generate Python code from natural language descriptions.
 import os
 import openai
 from typing import Dict, Any
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 def generate_code(description: str) -> Dict[str, Any]:
     """

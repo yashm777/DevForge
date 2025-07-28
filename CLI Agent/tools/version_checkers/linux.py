@@ -1,131 +1,197 @@
 import shutil
 import subprocess
+import os
 import logging
-from tools.os_utils import get_linux_distro
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def handle_tool(tool_name: str, version: str = "latest") -> dict:
-    """
-    Check the version of a tool on Linux.
+def find_executable(tool_name: str) -> str:
+    tool_aliases = {
+        "python": ["python3", "python"],
+        "pip": ["pip3", "pip"],
+        "node": ["node", "nodejs"],
+        "java": ["java", "javac"],
+    }
+    
+    possible_names = tool_aliases.get(tool_name, [tool_name])
+    
+    for name in possible_names:
+        executable_path = shutil.which(name)
+        if executable_path:
+            return executable_path
+    
+    common_paths = [
+        "/usr/local/bin",
+        "/usr/bin",
+        "/bin",
+        "/usr/sbin",
+        "/sbin",
+        os.path.expanduser("~/.local/bin"),
+    ]
+    
+    for path in common_paths:
+        for name in possible_names:
+            full_path = os.path.join(path, name)
+            if os.path.isfile(full_path) and os.access(full_path, os.X_OK):
+                return full_path
+                
+    return None
 
-    Args:
-        tool_name (str): Name of the tool to check version for.
-        version (str): Version parameter (not used for version check).
 
-    Returns:
-        dict: Status message and version information.
-    """
+def get_java_versions():
+    java_info = {"installed_versions": [], "active_version": None}
+    
     try:
-        # Check if the tool is installed
-        if shutil.which(tool_name) is None:
+        result = subprocess.run(
+            ["java", "-version"],
+            capture_output=True, text=True, timeout=10, check=True,
+            stderr=subprocess.STDOUT
+        )
+        java_info["active_version"] = result.stdout.strip().split("\n")[0]
+    except Exception as e:
+        logger.warning(f"Failed to get active java version: {e}")
+    
+    try:
+        result = subprocess.run(
+            ["update-alternatives", "--list", "java"],
+            capture_output=True, text=True, timeout=10, check=True
+        )
+        lines = result.stdout.strip().splitlines()
+        java_info["installed_versions"] = lines
+    except Exception:
+        java_info["installed_versions"] = []
+    
+    return java_info
+
+
+def check_version(tool_name: str, version: str = "latest") -> dict:
+    executable_path = find_executable(tool_name)
+    if executable_path:
+        try:
+            version_commands = [
+                [executable_path, "--version"],
+                [executable_path, "-v"],
+                [executable_path, "-V"],
+                [executable_path, "version"],
+            ]
+            for cmd in version_commands:
+                try:
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=10, check=True)
+                    output = result.stdout.strip() or result.stderr.strip()
+                    if output:
+                        return {
+                            "status": "success",
+                            "message": f"Version information for {tool_name}",
+                            "version": output,
+                            "command": " ".join(cmd),
+                        }
+                except subprocess.CalledProcessError:
+                    continue
+        except Exception as e:
+            logger.warning(f"Error running version commands for {tool_name}: {e}")
+    
+    # Special case for java
+    if tool_name.lower() == "java":
+        java_versions = get_java_versions()
+        if java_versions["installed_versions"] or java_versions["active_version"]:
             return {
-                "status": "error",
-                "message": f"{tool_name} is not installed or not in PATH"
+                "status": "success",
+                "message": "Java version details",
+                "active_version": java_versions["active_version"],
+                "installed_versions": java_versions["installed_versions"],
             }
-
-        # Try different version command patterns
-        version_commands = [
-            [tool_name, "--version"],
-            [tool_name, "-v"],
-            [tool_name, "-V"],
-            [tool_name, "version"]
-        ]
-
-        for cmd in version_commands:
-            try:
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-                if result.returncode == 0 and result.stdout.strip():
-                    version_output = result.stdout.strip()
-                    return {
-                        "status": "success",
-                        "message": f"Version information for {tool_name}",
-                        "version": version_output,
-                        "command": " ".join(cmd)
-                    }
-            except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
-                continue
-
-        # If no version command worked, try package managers
-        distro = get_linux_distro()
+    
+    # Package manager queries
+    try:
+        # Debian/Ubuntu and derivatives
+        if shutil.which("dpkg"):
+            result = subprocess.run(
+                ["dpkg", "-l", tool_name],
+                capture_output=True, text=True, timeout=10, check=True
+            )
+            lines = result.stdout.strip().splitlines()
+            for line in lines:
+                if line.startswith("ii"):
+                    parts = line.split()
+                    if len(parts) >= 3:
+                        return {
+                            "status": "success",
+                            "message": f"Version info from dpkg for {tool_name}",
+                            "version": parts[2],
+                            "source": "dpkg"
+                        }
         
-        if distro in ("debian", "ubuntu") and shutil.which("dpkg"):
-            try:
-                dpkg_cmd = ["dpkg", "-l", tool_name]
-                result = subprocess.run(dpkg_cmd, capture_output=True, text=True, timeout=10)
-                if result.returncode == 0 and result.stdout.strip():
-                    # Parse dpkg output to extract version
-                    lines = result.stdout.strip().split('\n')
-                    for line in lines:
-                        if line.startswith('ii') and tool_name in line:
-                            parts = line.split()
-                            if len(parts) >= 3:
-                                return {
-                                    "status": "success",
-                                    "message": f"Version information for {tool_name} (APT)",
-                                    "version": parts[2],
-                                    "source": "apt"
-                                }
-            except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
-                pass
+        # RPM-based distros
+        if shutil.which("rpm"):
+            result = subprocess.run(
+                ["rpm", "-q", tool_name],
+                capture_output=True, text=True, timeout=10, check=True
+            )
+            output = result.stdout.strip()
+            if output and "not installed" not in output.lower():
+                return {
+                    "status": "success",
+                    "message": f"Version info from rpm for {tool_name}",
+                    "version": output,
+                    "source": "rpm"
+                }
 
-        elif distro in ("fedora", "centos", "rhel") and shutil.which("rpm"):
-            try:
-                rpm_cmd = ["rpm", "-q", tool_name]
-                result = subprocess.run(rpm_cmd, capture_output=True, text=True, timeout=10)
-                if result.returncode == 0 and result.stdout.strip():
+        # Snap packages
+        if shutil.which("snap"):
+            result = subprocess.run(
+                ["snap", "list", tool_name],
+                capture_output=True, text=True, timeout=10, check=True
+            )
+            lines = result.stdout.strip().splitlines()
+            if len(lines) >= 2:
+                version_line = lines[1].split()
+                if len(version_line) >= 2:
                     return {
                         "status": "success",
-                        "message": f"Version information for {tool_name} (RPM)",
-                        "version": result.stdout.strip(),
-                        "source": "rpm"
+                        "message": f"Version info from snap for {tool_name}",
+                        "version": version_line[1],
+                        "source": "snap"
                     }
-            except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
-                pass
 
-        elif distro in ("arch", "manjaro") and shutil.which("pacman"):
-            try:
-                pacman_cmd = ["pacman", "-Q", tool_name]
-                result = subprocess.run(pacman_cmd, capture_output=True, text=True, timeout=10)
-                if result.returncode == 0 and result.stdout.strip():
+        # Pacman (Arch Linux)
+        if shutil.which("pacman"):
+            result = subprocess.run(
+                ["pacman", "-Qi", tool_name],
+                capture_output=True, text=True, timeout=10, check=True
+            )
+            lines = result.stdout.strip().splitlines()
+            for line in lines:
+                if line.lower().startswith("version"):
+                    _, ver = line.split(":", 1)
                     return {
                         "status": "success",
-                        "message": f"Version information for {tool_name} (Pacman)",
-                        "version": result.stdout.strip(),
+                        "message": f"Version info from pacman for {tool_name}",
+                        "version": ver.strip(),
                         "source": "pacman"
                     }
-            except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
-                pass
 
-        elif distro == "alpine" and shutil.which("apk"):
-            try:
-                apk_cmd = ["apk", "info", tool_name]
-                result = subprocess.run(apk_cmd, capture_output=True, text=True, timeout=10)
-                if result.returncode == 0 and result.stdout.strip():
+        # Flatpak packages
+        if shutil.which("flatpak"):
+            result = subprocess.run(
+                ["flatpak", "info", tool_name],
+                capture_output=True, text=True, timeout=10, check=True
+            )
+            lines = result.stdout.strip().splitlines()
+            for line in lines:
+                if line.lower().startswith("version"):
+                    _, ver = line.split(":", 1)
                     return {
                         "status": "success",
-                        "message": f"Version information for {tool_name} (APK)",
-                        "version": result.stdout.strip(),
-                        "source": "apk"
+                        "message": f"Version info from flatpak for {tool_name}",
+                        "version": ver.strip(),
+                        "source": "flatpak"
                     }
-            except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
-                pass
-
-        return {
-            "status": "error",
-            "message": f"Could not determine version for {tool_name}",
-            "details": "Tool is installed but version command failed"
-        }
 
     except Exception as e:
-        logger.error(f"Error checking version for {tool_name}: {e}")
-        return {
-            "status": "error",
-            "message": f"Error checking version for {tool_name}",
-            "details": str(e)
-        }
-
-# Legacy function for backward compatibility
-def version_tool_linux(tool_name: str, version: str = "latest") -> dict:
-    return handle_tool(tool_name, version) 
+        logger.warning(f"Package manager query failed: {e}")
+    
+    return {
+        "status": "error",
+        "message": f"{tool_name} is not installed, not in PATH, or version could not be determined."
+    }

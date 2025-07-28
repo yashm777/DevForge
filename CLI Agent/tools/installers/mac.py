@@ -1,61 +1,33 @@
-import shutil
 import subprocess
-import logging
+import shutil
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+def install_mac_tool(tool, version="latest"):
+    if not shutil.which("brew"):
+        try:
+            install_brew_cmd = [
+                "/bin/bash", "-c", 
+                "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+            ]
+            brew_result = subprocess.run(install_brew_cmd, capture_output=True, text=True, timeout=300)
+            if brew_result.returncode != 0:
+                return {
+                    "status": "error", 
+                    "message": f"Failed to install Homebrew: {brew_result.stderr.strip() or brew_result.stdout.strip()}"
+                }
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
 
-def handle_tool(tool_name: str, version: str = "latest") -> dict:
-    """Handle tool installation on macOS"""
-    if shutil.which("brew") is None:
-        logger.error("Homebrew not found. Installation cannot proceed.")
-        return {
-            "status": "error",
-            "message": "Homebrew not found. Please install Homebrew first: /bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
-        }
-
-    # Define cask applications (GUI apps)
-    cask_apps = {
-        "docker", "visual-studio-code", "google-chrome", "slack", "zoom", 
-        "firefox", "discord", "spotify", "postman", "insomnia", "tableplus"
-    }
-
-    is_cask = tool_name.lower() in cask_apps
+    if version != "latest" and tool in ["python", "node", "java", "go", "php"]:
+        cmd = ["brew", "install", f"{tool}@{version}"]
+    else:
+        cmd = ["brew", "install", tool]
 
     try:
-        if is_cask:
-            command = ["brew", "install", "--cask", tool_name]
-            logger.info(f"Installing cask: {tool_name}")
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode == 0:
+            return {"status": "success", "message": result.stdout.strip() or f"Installed {tool}"}
         else:
-            command = ["brew", "install", tool_name]
-            logger.info(f"Installing formula: {tool_name}")
-
-        logger.info(f"Running command: {' '.join(command)}")
-        result = subprocess.run(command, capture_output=True, text=True, check=True)
-
-        logger.info(f"Installation successful: {tool_name}")
-        return {
-            "status": "success",
-            "message": f"{tool_name} installed successfully via Homebrew",
-            "details": result.stdout.strip(),
-            "type": "cask" if is_cask else "formula"
-        }
-
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Installation failed: {e.stderr.strip()}")
-        return {
-            "status": "error",
-            "message": f"Failed to install {tool_name} via Homebrew",
-            "details": e.stderr.strip() if e.stderr else "No additional error details."
-        }
+            return {"status": "error", "message": result.stderr.strip() or result.stdout.strip()}
     except Exception as e:
-        logger.error(f"Unexpected error during installation: {e}")
-        return {
-            "status": "error",
-            "message": f"Unexpected error during installation: {str(e)}"
-        }
+        return {"status": "error", "message": str(e)}
 
-# Legacy function for backward compatibility
-def install_tool_mac(tool_name: str, version: str = "latest") -> dict:
-    return handle_tool(tool_name, version)
-# Legacy function for backward compatibility

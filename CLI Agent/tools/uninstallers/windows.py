@@ -1,17 +1,13 @@
 import subprocess
 
-def handle_tool(tool, version=None):
+def uninstall_windows_tool(tool):
     try:
-        # winget uninstall <tool> --silent --accept-source-agreements
-        cmd = [
-            "winget", "uninstall", tool,
-            "--silent",
-            "--accept-source-agreements"
-        ]
+        cmd = ["winget", "uninstall", tool, "--silent", "--accept-source-agreements"]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode == 0:
-            return {"status": "success", "message": f"Uninstalled {tool} (Windows/winget)"}
+            return {"status": "success", "message": result.stdout.strip() or f"Uninstalled {tool}"}
         else:
-            return {"status": "error", "message": result.stderr or result.stdout}
+            return {"status": "error", "message": result.stderr.strip() or result.stdout.strip()}
     except Exception as e:
-        return {"status": "error", "message": str(e)} 
+        return {"status": "error", "message": str(e)}
+

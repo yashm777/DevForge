@@ -1,20 +1,34 @@
 import subprocess
+import re
 
-def handle_tool(tool, version=None):
+def check_version(tool,version=None):
     try:
-        # winget list <tool>
+        # subprocess.run with list args handles spaces correctly
         cmd = ["winget", "list", tool]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
         if result.returncode == 0:
-            # Try to extract version from output
             lines = result.stdout.splitlines()
             for line in lines:
+                # Match line containing tool name (case-insensitive)
                 if tool.lower() in line.lower():
-                    parts = line.split()
-                    if len(parts) >= 3:
-                        return {"status": "success", "message": f"{tool} version: {parts[2]} (Windows/winget)"}
-            return {"status": "success", "message": f"{tool} not found or version not detected (Windows/winget)"}
+                    # Regex to match version pattern like 2.5.10921.0 or 2.2524.4.0
+                    match = re.search(r'\b(\d+(?:\.\d+)+)\b', line)
+                    if match:
+                        return {
+                            "status": "success",
+                            "message": f"{tool} version: {match.group(1)} (Windows/winget)"
+                        }
+            return {
+                "status": "success",
+                "message": f"{tool} not found or version not detected (Windows/winget)"
+            }
         else:
-            return {"status": "error", "message": result.stderr or result.stdout}
+            return {
+                "status": "error",
+                "message": result.stderr.strip() or result.stdout.strip()
+            }
     except Exception as e:
-        return {"status": "error", "message": str(e)} 
+        return {
+            "status": "error",
+            "message": str(e)
+        }
