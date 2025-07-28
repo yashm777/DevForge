@@ -51,6 +51,29 @@ AVAILABLE_TOOLS = {
         "params": {
             "description": "Description of the code to generate"
         }
+    },
+    "git_clone": {
+        "description": "Clone a Git repository to a local directory",
+        "params": {
+            "repo_url": "URL of the Git repository to clone",
+            "dest_dir": "Destination directory (optional)",
+            "branch": "Branch to checkout after cloning (optional)"
+        }
+    },
+    "git_switch_branch": {
+        "description": "Switch to a branch in a local Git repository (creates it if it doesn't exist)",
+        "params": {
+            "dest_dir": "Path to the local Git repository",
+            "branch": "Branch name to switch to",
+            "username": "GitHub username (optional, for configuring credentials)",
+            "email": "GitHub email (optional, for configuring credentials)"
+        }
+    },
+    "git_generate_ssh_key": {
+        "description": "Generate a new SSH key for GitHub",
+        "params": {
+            "email": "Email address to associate with the SSH key"
+        }
     }
 }
 
