@@ -19,7 +19,6 @@ from tools.version_checkers.linux import check_version as check_version_linux
 from tools.upgraders.mac import handle_tool_mac
 from tools.upgraders.windows import handle_tool
 from tools.upgraders.linux import handle_tool
-from tools.system_config import windows 
 import traceback
 
 
@@ -87,26 +86,34 @@ def get_system_info():
 
 def handle_system_config(tool, action="check", value=None):
     os_type = platform.system().lower()
-    if os_type != "windows":
+
+    if os_type == "windows":
+        from tools.system_config import windows as sys_tool
+    elif os_type == "linux":
+        from tools.system_config import linux as sys_tool
+    else:
         return {"status": "error", "message": f"System config tools not implemented for {os_type}"}
 
-    if action == "check":
-        return windows.check_env_variable(tool)
-    elif action == "set":
-        return windows.set_env_variable(tool, value)
-    elif action == "append_to_path":
-        return windows.append_to_path(tool)
-    elif action == "is_port_open":
-        return windows.is_port_open(int(tool))
-    elif action == "is_service_running":
-        return windows.is_service_running(tool)
-    elif action == "remove_env":
-        return windows.remove_env_variable(tool)
-    elif action == "list_env":
-        return windows.list_env_variables()
-    elif action == "remove_from_path":
-        return windows.remove_from_path(tool)
 
+    if action == "check":
+        return sys_tool.check_env_variable(tool)
+    elif action == "set":
+        return sys_tool.set_env_variable(tool, value)
+    elif action == "append_to_path":
+        return sys_tool.append_to_path(tool)
+    elif action == "remove_from_path":
+        return sys_tool.remove_from_path(tool)
+    elif action == "is_port_open":
+        try:
+            return sys_tool.is_port_open(int(tool))
+        except ValueError:
+            return {"status": "error", "message": "Port must be an integer"}
+    elif action == "is_service_running":
+        return sys_tool.is_service_running(tool)
+    elif action == "remove_env":
+        return sys_tool.remove_env_variable(tool)
+    elif action == "list_env":
+        return sys_tool.list_env_variables()
     else:
         return {"status": "error", "message": f"Unknown system_config action: {action}"}
 
