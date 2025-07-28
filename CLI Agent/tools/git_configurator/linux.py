@@ -83,12 +83,13 @@ def clone_repository(repo_url: str, dest_dir: str = None, branch: str = None):
     if dest_dir:
         cmd.append(dest_dir)
     try:
-        subprocess.run(cmd, check=True)
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
         if branch:
-            switch_branch(dest_dir or ".", branch)  # Switch to the branch after cloning
+            switch_branch(dest_dir or ".", branch)
         return f"Repository cloned to {dest_dir or 'current directory'}"
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"Failed to clone repository: {e}")
+        print("GIT CLONE ERROR:", e.stderr or e.stdout)
+        raise RuntimeError(f"Failed to clone repository: {e.stderr or e.stdout}")
 
 
 def switch_branch(repo_path: str, branch: str):

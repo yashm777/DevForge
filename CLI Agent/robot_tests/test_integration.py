@@ -66,7 +66,6 @@ def test_git_clone_with_repo_url():
         resp = requests.post(MCP_SERVER_URL, json=payload)
         assert resp.status_code == 200
         data = resp.json()["result"]
-        print("GIT CLONE RESPONSE:", data)
         assert data["status"] == "success"
         assert "cloned" in data["details"]["message"].lower()
 
@@ -86,4 +85,3 @@ def test_git_generate_ssh_key_success():
     data = resp.json()["result"]
     assert data["status"] == "success"
     assert "ssh key" in data["details"]["message"].lower()
-    print("SSH KEY RESPONSE:", data)
