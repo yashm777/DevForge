@@ -173,7 +173,7 @@ def check_version_mac_tool(tool_name, version="latest"):
         logger.info(f"Matched active version to package: {detected_package}")
         return {
             "status": "success", 
-            "message": f"{tool_name} ({detected_package}) is installed",
+            "message": f"{tool_name} ({detected_package}) is installed - version {active_version_info['version']}",
             "version": active_version_info["version"],
             "details": {
                 "requested_tool": tool_name,
@@ -204,7 +204,7 @@ def check_version_mac_tool(tool_name, version="latest"):
         logger.info(f"Found {package_name} version: {version_info['version']}")
         return {
             "status": "success",
-            "message": f"{tool_name} ({package_name}) is installed",
+            "message": f"{tool_name} ({package_name}) is installed - version {version_info['version']}",
             "version": version_info["version"],
             "details": {
                 "requested_tool": tool_name,
