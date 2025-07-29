@@ -151,9 +151,12 @@ def clone_repository(repo_url: str, dest_dir: str = None, branch: str = None):
         raise ValueError("A valid repository URL must be provided for cloning.")
 
     if is_https_url(repo_url):
-        # HTTPS clone requires username and PAT/token
-        username = input("Enter your GitHub username: ").strip()
-        token = getpass.getpass("Enter your GitHub personal access token (input hidden): ").strip()
+        if not username:
+            username = input("Enter your GitHub username: ").strip()
+        if not token:
+            token = getpass.getpass("Enter your GitHub personal access token (input hidden): ").strip()
+        if not username or not token:
+            raise RuntimeError("Both username and personal access token are required for HTTPS cloning.")
         auth_repo_url = repo_url.replace("https://", f"https://{username}:{token}@")
         cmd = ["git", "clone", auth_repo_url]
     else:
