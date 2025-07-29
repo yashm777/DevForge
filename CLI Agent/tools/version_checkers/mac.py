@@ -44,6 +44,8 @@ def check_active_version(tool_name):
             # Default: try tool_name --version
             cmd = [tool_name, "--version"]
         
+        logger.info(f"Running active version check for {tool_name} with command: {cmd}")
+        
         # Run the version command
         result = subprocess.run(
             cmd,
@@ -52,16 +54,20 @@ def check_active_version(tool_name):
             timeout=10
         )
         
+        logger.info(f"Active version check result: returncode={result.returncode}, output={repr(result.stdout.strip() or result.stderr.strip())}")
+        
         if result.returncode == 0:
             output = result.stdout.strip() or result.stderr.strip()  # Some tools output to stderr
             # Extract version from output
             version = extract_version_from_output(output, tool_name)
+            logger.info(f"Extracted version: {version}")
             return {
                 "found": True,
                 "version": version,
                 "raw_output": output
             }
         else:
+            logger.info(f"Active version check failed with returncode {result.returncode}")
             return {"found": False}
             
     except Exception as e:
@@ -116,9 +122,9 @@ def match_active_version_to_package(active_info, primary_package, alternatives):
     if "python" in primary_package.lower() or any("python" in alt.lower() for alt in alternatives):
         # Extract major version number
         import re
-        version_match = re.search(r'^(\d+)', version)
+        version_match = re.search(r'^(\d+)\.(\d+)', version)
         if version_match:
-            major_version = version_match.group(1)
+            major_version = f"{version_match.group(1)}.{version_match.group(2)}"
             
             # Check if there's a version-specific package
             version_specific = f"python@{major_version}"
@@ -126,6 +132,18 @@ def match_active_version_to_package(active_info, primary_package, alternatives):
             
             if version_specific in all_packages:
                 return version_specific
+            
+            # If not found in alternatives, check what's actually installed
+            try:
+                import subprocess
+                result = subprocess.run(["brew", "list", "--versions"], capture_output=True, text=True, timeout=10)
+                if result.returncode == 0:
+                    installed_packages = result.stdout.strip().split('\n')
+                    for package in installed_packages:
+                        if f"python@{major_version}" in package:
+                            return f"python@{major_version}"
+            except Exception:
+                pass
     
     # Default to primary package
     return primary_package
@@ -179,6 +197,7 @@ def check_version_mac_tool(tool_name, version="latest"):
     
     # Step 4: First check what version is currently active in PATH
     active_version_info = check_active_version(tool_name)
+    logger.info(f"Active version check result: {active_version_info}")
     if active_version_info.get("found", False):
         logger.info(f"Found active {tool_name} version in PATH: {active_version_info['version']}")
         # Try to match the active version to a Homebrew package
@@ -197,6 +216,8 @@ def check_version_mac_tool(tool_name, version="latest"):
                 "source": "active_in_path"
             }
         }
+    else:
+        logger.info(f"No active version found for {tool_name}, falling back to Homebrew package checking")
     
     # Step 5: If no active version found, check installed packages - try primary package first
     version_info = get_installed_version(package_name, is_cask)
