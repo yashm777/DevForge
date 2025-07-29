@@ -16,10 +16,10 @@ from tools.installers.linux import install_linux_tool
 from tools.uninstallers.mac import uninstall_mac_tool
 from tools.uninstallers.windows import uninstall_windows_tool
 from tools.uninstallers.linux import uninstall_tool_linux
-from tools.version_checkers.mac import check_version_mac_tool as check_version_mac
+from tools.version_checkers.mac import check_version_mac_tool
 from tools.version_checkers.windows import check_version as check_version_windows
 from tools.version_checkers.linux import check_version as check_version_linux
-from tools.upgraders.mac import upgrade_mac_tool as handle_tool_mac, downgrade_mac_tool
+from tools.upgraders.mac import upgrade_mac_tool
 from tools.upgraders.windows import handle_tool
 from tools.upgraders.linux import handle_tool
 import traceback
@@ -99,7 +99,7 @@ def check_version(tool, version="latest"):
     if os_type == "windows":
         result = check_version_windows(tool, version)
     elif os_type == "darwin":
-        result = check_version_mac(tool)  # Only pass tool, not version
+        result = check_version_mac_tool(tool, version)
     elif os_type == "linux":
         result = check_version_linux(tool, version)
     else:
@@ -114,35 +114,13 @@ def upgrade_tool(tool, version="latest"):
     if os_type == "windows":
         result = handle_tool(tool, version)
     elif os_type == "darwin":
-        result = handle_tool_mac(tool, version)
+        result = upgrade_mac_tool(tool, version)
     elif os_type == "linux":
         result = handle_tool(tool, version)
     else:
         result = {"status": "error", "message": f"Unsupported OS: {os_type}"}
     
     add_log_entry("INFO", f"Upgrade result for {tool}: {result.get('status', 'unknown')}")
-    return result
-
-def downgrade_tool(tool, version="latest"):
-    add_log_entry("INFO", f"Downgrade request for tool: {tool} (version: {version})")
-    os_type = platform.system().lower()
-    if os_type == "darwin":
-        # Use Mac-specific downgrade function
-        result = downgrade_mac_tool(tool, version)
-    elif os_type == "windows":
-        # For now, use upgrade function with different messaging
-        result = handle_tool(tool, version)
-        if result["status"] == "success":
-            result["message"] = result["message"].replace("upgraded", "switched to")
-    elif os_type == "linux":
-        # For now, use upgrade function with different messaging  
-        result = handle_tool(tool, version)
-        if result["status"] == "success":
-            result["message"] = result["message"].replace("upgraded", "switched to")
-    else:
-        result = {"status": "error", "message": f"Unsupported OS: {os_type}"}
-    
-    add_log_entry("INFO", f"Downgrade result for {tool}: {result.get('status', 'unknown')}")
     return result
 
 def get_system_info():
@@ -169,7 +147,6 @@ task_handlers = {
     "uninstall": uninstall_tool,
     "update": upgrade_tool,
     "upgrade": upgrade_tool,
-    "downgrade": downgrade_tool,
     "version": check_version,
 }
 
