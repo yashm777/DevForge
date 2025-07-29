@@ -112,7 +112,20 @@ def match_active_version_to_package(active_info, primary_package, alternatives):
             if version_specific in all_packages:
                 return version_specific
     
-    # For other tools, could add similar logic
+    # For Python, try to match version to package name
+    if "python" in primary_package.lower() or any("python" in alt.lower() for alt in alternatives):
+        # Extract major version number
+        import re
+        version_match = re.search(r'^(\d+)', version)
+        if version_match:
+            major_version = version_match.group(1)
+            
+            # Check if there's a version-specific package
+            version_specific = f"python@{major_version}"
+            all_packages = [primary_package] + alternatives
+            
+            if version_specific in all_packages:
+                return version_specific
     
     # Default to primary package
     return primary_package
