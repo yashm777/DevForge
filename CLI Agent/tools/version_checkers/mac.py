@@ -117,7 +117,7 @@ def match_active_version_to_package(active_info, primary_package, alternatives):
     # Default to primary package
     return primary_package
 
-def check_version_mac_tool(tool_name):
+def check_version_mac_tool(tool_name, version="latest"):
     """
     Check what version of a development tool is installed on Mac.
     
