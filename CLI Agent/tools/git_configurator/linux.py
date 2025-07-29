@@ -140,13 +140,19 @@ def is_https_url(url: str) -> bool:
     return parsed.scheme == "https"
 
 
-def clone_repository(repo_url: str, dest_dir: str = None, branch: str = None):
+def clone_repository(repo_url: str, dest_dir: str = None, branch: str = None, username: str = None, token: str = None):
     """
     Clone the given Git repository to the optional destination directory.
     Handles HTTPS and SSH cloning.
     For HTTPS cloning, prompts for username and token.
     For SSH cloning, on authentication failure, informs the user to add SSH key.
     """
+    # --- Interactivity test ---
+    proceed = input("Do you want to proceed with cloning? (yes/no): ").strip().lower()
+    if proceed not in ("yes", "y"):
+        print("Cloning cancelled by user.")
+        return "Cloning cancelled by user."
+
     if not repo_url or not isinstance(repo_url, str):
         raise ValueError("A valid repository URL must be provided for cloning.")
 
