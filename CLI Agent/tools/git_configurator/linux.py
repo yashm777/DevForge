@@ -147,14 +147,10 @@ def clone_repository(repo_url: str, dest_dir: str = None, branch: str = None, us
     For HTTPS cloning, prompts for username and token.
     For SSH cloning, on authentication failure, informs the user to add SSH key.
     """
-    # --- Interactivity test ---
-    proceed = input("Do you want to proceed with cloning? (yes/no): ").strip().lower()
-    if proceed not in ("yes", "y"):
-        print("Cloning cancelled by user.")
-        return "Cloning cancelled by user."
-
     if not repo_url or not isinstance(repo_url, str):
         raise ValueError("A valid repository URL must be provided for cloning.")
+
+    print(f"DEBUG: repo_url received: {repo_url!r}")  # Debug line added
 
     if is_https_url(repo_url):
         if not username:
