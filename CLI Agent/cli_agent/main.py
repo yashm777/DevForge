@@ -27,6 +27,19 @@ app = typer.Typer(
 # Global HTTP MCP client
 mcp_client = None
 
+def get_display_name(tool_name: str) -> str:
+    """Convert Linux package names back to user-friendly names for display"""
+    display_mapping = {
+        "default-jdk": "java",
+        "docker.io": "docker", 
+        "python3": "python",
+        "nodejs": "node",
+        "golang": "go",  # LLM transforms go -> golang, but show as go
+        "intellij-idea-community": "intellij",
+        "pycharm-community": "pycharm",
+    }
+    return display_mapping.get(tool_name, tool_name)
+
 def format_result(result: Dict[str, Any]) -> str:
     """Format the result object into a clean, readable string or table"""
     if isinstance(result, dict):
@@ -163,11 +176,13 @@ def run(
                     return
             else:
                 formatted_result = format_result(result)
-                console.print(Panel(formatted_result, title=f"{action.capitalize()} {tool_name}", border_style="green"))
+                display_name = get_display_name(tool_name)
+                console.print(Panel(formatted_result, title=f"{action.capitalize()} {display_name}", border_style="green"))
         elif action in ("uninstall", "update", "version"):
             result = mcp_client.tool_action(action, tool_name, version)
             formatted_result = format_result(result)
-            console.print(Panel(formatted_result, title=f"{action.capitalize()} {tool_name}", border_style="green"))
+            display_name = get_display_name(tool_name)
+            console.print(Panel(formatted_result, title=f"{action.capitalize()} {display_name}", border_style="green"))
         elif parsed.get("method") and parsed.get("params") is not None:
             result = mcp_client.call_jsonrpc(parsed["method"], parsed["params"])
             formatted_result = format_result(result)
