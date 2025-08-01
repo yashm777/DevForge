@@ -270,10 +270,11 @@ def perform_git_setup(
     username: str = "",
     email: str = "",
     dest_dir: str = "",
+    pat: str = "",
 ):
     """
     Entry point to perform git-related tasks. Handles pre-checks and executes action.
-    Actions supported: 'clone', 'switch_branch', 'generate_ssh_key'
+    Actions supported: 'clone', 'switch_branch', 'generate_ssh_key', 'add_ssh_key', 'check_ssh_key_auth'
     """
     if not is_git_installed():
         return {"status": "error", "message": "Git is not installed on this system."}
@@ -300,8 +301,32 @@ def perform_git_setup(
             msg = switch_branch(dest_dir, branch)
             return {"status": "success", "action": action, "details": {"message": msg, "repo_path": dest_dir, "branch": branch}}
 
+        elif action == "add_ssh_key":
+            # You need to implement add_ssh_key_to_github(pubkey, pat) and call it here
+            key_path = os.path.expanduser("~/.ssh/id_rsa.pub")
+            if not os.path.exists(key_path):
+                return {"status": "error", "message": "SSH public key not found. Please generate it first."}
+            with open(key_path, "r") as pubkey_file:
+                pubkey = pubkey_file.read()
+            if pat:
+                result = add_ssh_key_to_github(pubkey, pat)
+                return {"status": "success", "action": action, "details": {"message": result}}
+            else:
+                manual_msg = (
+                    "Manual steps to add your SSH key to GitHub:\n"
+                    "1. Copy the public key below:\n"
+                    f"{pubkey}\n"
+                    "2. Go to https://github.com/settings/ssh/new\n"
+                    "3. Paste the key and save."
+                )
+                return {"status": "success", "action": action, "details": {"message": manual_msg}}
+
+        elif action == "check_ssh_key_auth":
+            result = check_ssh_key_auth()
+            return {"status": result.get("status", "error"), "action": action, "details": result}
+
         else:
-            valid_actions = ['clone', 'switch_branch', 'generate_ssh_key']
+            valid_actions = ['clone', 'switch_branch', 'generate_ssh_key', 'add_ssh_key', 'check_ssh_key_auth']
             return {"status": "error", "message": f"Unsupported action: {action}. Valid actions are: {', '.join(valid_actions)}"}
     except Exception as e:
         logging.error("Git setup error: %s", str(e))
@@ -344,3 +369,25 @@ def setup_github_ssh_key(email: str, pat: str = None):
         print("2. Go to https://github.com/settings/ssh/new")
         print("3. Paste the key and save.")
         input("\nPress Enter after you have added the SSH key to your GitHub account...")
+
+def check_ssh_key_auth() -> dict:
+    """
+    Check if the SSH key is authorized with GitHub.
+    Returns a dict with status and message.
+    """
+    key_path = os.path.expanduser("~/.ssh/id_rsa")
+    pub_key_path = key_path + ".pub"
+    if not os.path.exists(key_path) or not os.path.exists(pub_key_path):
+        return {"status": "error", "message": "SSH key not found. Please generate your SSH key first."}
+    try:
+        result = subprocess.run(
+            ["ssh", "-T", "git@github.com"],
+            capture_output=True, text=True, check=True
+        )
+        output = result.stdout.lower() + result.stderr.lower()
+        if "successfully authenticated" in output or "hi " in output:
+            return {"status": "success", "message": "SSH key is correctly configured and connected to GitHub!"}
+        else:
+            return {"status": "warning", "message": result.stdout.strip() or result.stderr.strip()}
+    except subprocess.CalledProcessError as e:
+        return {"status": "error", "message": e.stderr or e.stdout or str(e)}
