@@ -147,48 +147,6 @@ def is_ssh_url(url: str) -> bool:
     return url.startswith("git@github.com:")
 
 
-def clone_repository(repo_url: str, dest_dir: str = None, branch: str = None, username: str = None, token: str = None):
-    """
-    Clone the given Git repository to the optional destination directory.
-    Handles HTTPS and SSH cloning.
-    For HTTPS cloning, prompts for username and token.
-    For SSH cloning, on authentication failure, informs the user to add SSH key.
-    """
-    if not repo_url or not isinstance(repo_url, str):
-        raise ValueError("A valid repository URL must be provided for cloning.")
-
-    print(f"DEBUG: repo_url received: {repo_url!r}")  # Debug line added
-
-    if is_https_url(repo_url):
-        if not username:
-            username = input("Enter your GitHub username: ").strip()
-        if not token:
-            token = getpass.getpass("Enter your GitHub personal access token (input hidden): ").strip()
-        if not username or not token:
-            raise RuntimeError("Both username and personal access token are required for HTTPS cloning.")
-        auth_repo_url = repo_url.replace("https://", f"https://{username}:{token}@")
-        cmd = ["git", "clone", auth_repo_url]
-    else:
-        # SSH clone
-        cmd = ["git", "clone", repo_url]
-
-    if dest_dir:
-        cmd.append(dest_dir)
-
-    try:
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
-        logging.info(f"Repository cloned to {dest_dir or 'current directory'}.")
-        if branch:
-            switch_branch(dest_dir or ".", branch)
-        return f"Repository cloned to {dest_dir or 'current directory'}"
-    except subprocess.CalledProcessError as e:
-        error_msg = e.stderr or e.stdout or str(e)
-        if not is_https_url(repo_url) and ("permission denied (publickey)" in error_msg.lower() or "access denied" in error_msg.lower()):
-            logging.error("SSH authentication failed. Please add your SSH public key to GitHub to clone private repos.")
-        logging.error("GIT CLONE ERROR: %s", error_msg)
-        raise RuntimeError(f"Failed to clone repository: {error_msg}")
-
-
 def clone_repository_ssh(repo_url: str, dest_dir: str = None, branch: str = None):
     """
     Clone a GitHub repository using SSH.
@@ -243,7 +201,7 @@ def clone_repository_ssh(repo_url: str, dest_dir: str = None, branch: str = None
         logging.error("GIT CLONE ERROR: %s", error_msg)
         raise RuntimeError(
             f"Failed to clone repository: {error_msg}\n"
-            "Check that your SSH key is authorized and the repository URL is correct."
+            "Check that your SSH key is authorized and the repository exists."
         )
 
 
