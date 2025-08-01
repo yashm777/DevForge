@@ -196,11 +196,21 @@ def clone_repository_ssh(repo_url: str, dest_dir: str = None, branch: str = None
     Only SSH links are supported.
     """
     logging.info(f"Requested clone for repo: {repo_url} into {dest_dir or 'current directory'}")
-    if not repo_url or not isinstance(repo_url, str):
-        raise ValueError("A valid repository URL must be provided for cloning.")
+
+    # Improved error handling for repo_url
+    if not repo_url or not isinstance(repo_url, str) or not repo_url.strip():
+        logging.error(f"Invalid or missing repository URL: {repo_url!r}")
+        raise ValueError(
+            "A valid SSH GitHub repository URL must be provided for cloning. "
+            "Example: git@github.com:username/repo.git"
+        )
+
     if not is_ssh_url(repo_url):
-        logging.error("Only SSH GitHub links are supported for cloning.")
-        raise RuntimeError("Only SSH GitHub links (git@github.com:...) are supported for cloning.")
+        logging.error(f"Unsupported repository URL format: {repo_url!r}")
+        raise RuntimeError(
+            "Only SSH GitHub links (git@github.com:...) are supported for cloning. "
+            "Please provide a valid SSH URL."
+        )
 
     key_path = os.path.expanduser("~/.ssh/id_rsa")
     pub_key_path = key_path + ".pub"
@@ -209,20 +219,13 @@ def clone_repository_ssh(repo_url: str, dest_dir: str = None, branch: str = None
         raise RuntimeError("SSH key not found. Please generate your SSH key before cloning.")
 
     # Check SSH authentication
-    try:
-        logging.info("Verifying SSH key authorization with GitHub...")
-        result = subprocess.run(
-            ["ssh", "-T", "git@github.com"],
-            capture_output=True, text=True, check=True
+    auth_result = check_ssh_key_auth()
+    if auth_result["status"] != "success":
+        logging.error(f"SSH authentication failed: {auth_result['message']}")
+        raise RuntimeError(
+            f"SSH key is not authorized with GitHub. {auth_result['message']} "
+            "Please add your public key to GitHub before cloning private repos."
         )
-        output = result.stdout.lower() + result.stderr.lower()
-        if "successfully authenticated" not in output and "hi " not in output:
-            logging.error("SSH key is not authorized with GitHub.")
-            raise RuntimeError("SSH key is not authorized with GitHub. Please add your public key to GitHub before cloning private repos.")
-        logging.info("SSH key is authorized with GitHub.")
-    except subprocess.CalledProcessError as e:
-        logging.error("SSH key authorization failed. Details: %s", e.stderr or e.stdout)
-        raise RuntimeError("SSH key is not authorized with GitHub. Please add your public key to GitHub before cloning private repos.")
 
     # Proceed with cloning
     cmd = ["git", "clone", repo_url]
@@ -238,7 +241,10 @@ def clone_repository_ssh(repo_url: str, dest_dir: str = None, branch: str = None
     except subprocess.CalledProcessError as e:
         error_msg = e.stderr or e.stdout or str(e)
         logging.error("GIT CLONE ERROR: %s", error_msg)
-        raise RuntimeError(f"Failed to clone repository: {error_msg}")
+        raise RuntimeError(
+            f"Failed to clone repository: {error_msg}\n"
+            "Check that your SSH key is authorized and the repository URL is correct."
+        )
 
 
 def switch_branch(repo_path: str, branch: str):
