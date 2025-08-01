@@ -140,6 +140,13 @@ def is_https_url(url: str) -> bool:
     return parsed.scheme == "https"
 
 
+def is_ssh_url(url: str) -> bool:
+    """
+    Check if the given URL is a valid SSH GitHub URL.
+    """
+    return url.startswith("git@github.com:")
+
+
 def clone_repository(repo_url: str, dest_dir: str = None, branch: str = None, username: str = None, token: str = None):
     """
     Clone the given Git repository to the optional destination directory.
@@ -178,6 +185,58 @@ def clone_repository(repo_url: str, dest_dir: str = None, branch: str = None, us
         error_msg = e.stderr or e.stdout or str(e)
         if not is_https_url(repo_url) and ("permission denied (publickey)" in error_msg.lower() or "access denied" in error_msg.lower()):
             logging.error("SSH authentication failed. Please add your SSH public key to GitHub to clone private repos.")
+        logging.error("GIT CLONE ERROR: %s", error_msg)
+        raise RuntimeError(f"Failed to clone repository: {error_msg}")
+
+
+def clone_repository_ssh(repo_url: str, dest_dir: str = None, branch: str = None):
+    """
+    Clone a GitHub repository using SSH.
+    Checks for SSH key existence and authorization before cloning.
+    Only SSH links are supported.
+    """
+    logging.info(f"Requested clone for repo: {repo_url} into {dest_dir or 'current directory'}")
+    if not repo_url or not isinstance(repo_url, str):
+        raise ValueError("A valid repository URL must be provided for cloning.")
+    if not is_ssh_url(repo_url):
+        logging.error("Only SSH GitHub links are supported for cloning.")
+        raise RuntimeError("Only SSH GitHub links (git@github.com:...) are supported for cloning.")
+
+    key_path = os.path.expanduser("~/.ssh/id_rsa")
+    pub_key_path = key_path + ".pub"
+    if not os.path.exists(key_path) or not os.path.exists(pub_key_path):
+        logging.error("SSH key not found. Please generate your SSH key first.")
+        raise RuntimeError("SSH key not found. Please generate your SSH key before cloning.")
+
+    # Check SSH authentication
+    try:
+        logging.info("Verifying SSH key authorization with GitHub...")
+        result = subprocess.run(
+            ["ssh", "-T", "git@github.com"],
+            capture_output=True, text=True, check=True
+        )
+        output = result.stdout.lower() + result.stderr.lower()
+        if "successfully authenticated" not in output and "hi " not in output:
+            logging.error("SSH key is not authorized with GitHub.")
+            raise RuntimeError("SSH key is not authorized with GitHub. Please add your public key to GitHub before cloning private repos.")
+        logging.info("SSH key is authorized with GitHub.")
+    except subprocess.CalledProcessError as e:
+        logging.error("SSH key authorization failed. Details: %s", e.stderr or e.stdout)
+        raise RuntimeError("SSH key is not authorized with GitHub. Please add your public key to GitHub before cloning private repos.")
+
+    # Proceed with cloning
+    cmd = ["git", "clone", repo_url]
+    if dest_dir:
+        cmd.append(dest_dir)
+    try:
+        logging.info(f"Cloning repository {repo_url} ...")
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        logging.info(f"Repository cloned to {dest_dir or 'current directory'}.")
+        if branch:
+            switch_branch(dest_dir or ".", branch)
+        return f"Repository cloned to {dest_dir or 'current directory'}"
+    except subprocess.CalledProcessError as e:
+        error_msg = e.stderr or e.stdout or str(e)
         logging.error("GIT CLONE ERROR: %s", error_msg)
         raise RuntimeError(f"Failed to clone repository: {error_msg}")
 
@@ -229,14 +288,12 @@ def perform_git_setup(
         elif action == "clone":
             if not repo_url:
                 return {"status": "error", "message": "Repository URL is required for cloning."}
-            # Optionally support branch cloning
-            msg = clone_repository(repo_url, dest_dir, branch) if branch else clone_repository(repo_url, dest_dir)
+            msg = clone_repository_ssh(repo_url, dest_dir, branch)
             return {"status": "success", "action": action, "details": {"message": msg, "repo_url": repo_url, "branch": branch}}
 
         elif action == "switch_branch":
             if not dest_dir or not branch:
                 return {"status": "error", "message": "Both repo path and branch name are required."}
-            # Optionally prompt for credentials if needed
             if not username or not email:
                 username, email = prompt_git_credentials()
             configure_git_credentials(username, email)
@@ -247,4 +304,43 @@ def perform_git_setup(
             valid_actions = ['clone', 'switch_branch', 'generate_ssh_key']
             return {"status": "error", "message": f"Unsupported action: {action}. Valid actions are: {', '.join(valid_actions)}"}
     except Exception as e:
+        logging.error("Git setup error: %s", str(e))
         return {"status": "error", "action": action, "message": str(e)}
+
+
+def add_ssh_key_to_github(pubkey: str, pat: str) -> str:
+    """
+    Add SSH public key to GitHub using the API and a Personal Access Token (PAT).
+    """
+    api_url = "https://api.github.com/user/keys"
+    headers = {
+        "Authorization": f"token {pat}",
+        "Accept": "application/vnd.github+json"
+    }
+    data = {
+        "title": "DevForge CLI Key",
+        "key": pubkey
+    }
+    response = requests.post(api_url, headers=headers, json=data)
+    if response.status_code == 201:
+        return "✅ SSH key added to your GitHub account via API."
+    else:
+        return f"❌ Failed to add SSH key via API: {response.text}"
+
+
+def setup_github_ssh_key(email: str, pat: str = None):
+    key_path = os.path.expanduser("~/.ssh/id_rsa.pub")
+    if not os.path.exists(key_path):
+        raise RuntimeError("SSH public key not found. Please generate it first.")
+    with open(key_path, "r") as pubkey_file:
+        pubkey = pubkey_file.read()
+    if pat:
+        result = add_ssh_key_to_github(pubkey, pat)
+        print(result)
+    else:
+        print("\nManual steps to add your SSH key to GitHub:")
+        print("1. Copy the public key below:")
+        print(pubkey)
+        print("2. Go to https://github.com/settings/ssh/new")
+        print("3. Paste the key and save.")
+        input("\nPress Enter after you have added the SSH key to your GitHub account...")

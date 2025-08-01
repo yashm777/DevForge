@@ -74,6 +74,17 @@ AVAILABLE_TOOLS = {
         "params": {
             "email": "Email address to associate with the SSH key"
         }
+    },
+    "git_add_ssh_key": {
+        "description": "Add your local SSH public key to GitHub using a PAT (or provide manual instructions if no PAT)",
+        "params": {
+            "pat": "GitHub Personal Access Token (optional, if provided will use API)",
+            "email": "Email address associated with the SSH key (optional)"
+        }
+    },
+    "git_check_ssh_auth": {
+        "description": "Check if your local SSH key is authorized with GitHub",
+        "params": {}
     }
 }
 
@@ -116,9 +127,9 @@ def build_prompt(user_input: str) -> str:
         "with params containing 'task' and 'tool_name'.\n"
         "For system info, use method 'info://server' with empty params.\n"
         "For code generation, use method 'generate_code' with 'description' param.\n"
-        "For git actions (clone, switch_branch, generate_ssh_key), always use method 'tool_action_wrapper' with params:\n"
+        "For git actions (clone, switch_branch, generate_ssh_key, add_ssh_key, check_ssh_key_auth), always use method 'tool_action_wrapper' with params:\n"
         "    - 'task': 'git_setup'\n"
-        "    - 'action': 'clone', 'switch_branch', or 'generate_ssh_key'\n"
+        "    - 'action': 'clone', 'switch_branch', 'generate_ssh_key', 'add_ssh_key', or 'check_ssh_key_auth'\n"
         "    - plus the required parameters for each action.\n\n"
         "Examples:\n"
         "- Install: {'method': 'tool_action_wrapper', 'params': {'task': 'install', 'tool_name': 'docker'}}\n"
