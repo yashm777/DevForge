@@ -90,93 +90,94 @@ def run(
     output_file: str = typer.Option(None, "--output", "-o", help="Output file path for code generation (optional)"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose output")
 ):
-    """Run any dev environment or tool management request in natural language."""
     if not setup_instances():
         return
+
     try:
         parsed = parse_user_command(command)
-        if verbose:
-            console.print(f"[yellow]Parsed result: {parsed}[/yellow]")
-        if "error" in parsed:
+
+        if isinstance(parsed, dict) and "error" in parsed:
             console.print(f"[red]Error parsing command: {parsed['error']}[/red]")
-            if "fallback" in parsed:
-                console.print(f"[yellow]Suggestion: {parsed['fallback']}[/yellow]")
             return
-        action = parsed.get("action") or parsed.get("params", {}).get("task")
-        tool_name = parsed.get("tool_name") or parsed.get("params", {}).get("tool_name")
-        version = parsed.get("version", "latest") if "version" in parsed else parsed.get("params", {}).get("version", "latest")
-        # Handle code generation
-        if parsed.get("method") == "generate_code":
-            description = parsed["params"].get("description", "")
-            code = mcp_client.generate_code(description)
-            if code and not code.startswith("[Error]"):
-                if output_file:
-                    with open(output_file, 'w', encoding='utf-8') as f:
-                        f.write(code)
-                    console.print(f"[green]Code written to {output_file}[/green]")
-                else:
-                    syntax = Syntax(code, "python", theme="monokai", line_numbers=True)
-                    console.print(Panel(syntax, title="Generated Code", border_style="green"))
-            else:
-                console.print(f"[red]Code generation failed: {code}[/red]")
-            return
-        elif action == "install":
-            console.print("[cyan]Contacting MCP server for install...[/cyan]")
-            result = mcp_client.tool_action(action, tool_name, version)
-            result_data = result.get("result", result)
-            if verbose:
-                console.print(f"[yellow]Debug - Result: {result}[/yellow]")
-                console.print(f"[yellow]Debug - Result data: {result_data}[/yellow]")
-            if result_data.get("status") == "ambiguous":
-                options = result_data.get("options", [])
-                if options:
-                    table = Table(title="Multiple Packages Found", show_lines=True)
-                    table.add_column("No.", style="cyan", justify="right")
-                    table.add_column("Name", style="bold")
-                    table.add_column("ID")
-                    table.add_column("Source")
-                    for idx, opt in enumerate(options, 1):
-                        table.add_row(str(idx), opt["name"], opt["id"], opt["source"])
-                    console.print(table)
-                    console.print("[yellow]Waiting for your selection...[/yellow]")
-                    try:
-                        choice = int(input("Enter the number of the package you want to install: "))
-                        console.print(f"[green]You selected: {choice}[/green]")
-                    except (ValueError, KeyboardInterrupt):
-                        console.print("[red]Invalid input or cancelled. Aborting.[/red]")
-                        return
-                    if 1 <= choice <= len(options):
-                        selected = options[choice-1]
-                        console.print(f"[green]Installing {selected['name']} (ID: {selected['id']})...[/green]")
-                        result2 = mcp_client.call_jsonrpc("tool_action_wrapper", {
-                            "task": "install_by_id",
-                            "tool_name": selected['id'],
-                            "version": version
-                        })
-                        result2_data = result2.get("result", result2)
-                        formatted_result = format_result(result2)
-                        console.print(Panel(formatted_result, title=f"{action.capitalize()} {selected['name']}", border_style="green"))
+
+        if isinstance(parsed, dict):
+            parsed = [parsed]
+
+        for i, action_item in enumerate(parsed, start=1):
+            method = action_item.get("method")
+            params = action_item.get("params", {})
+
+            console.print(f"[cyan]Executing Step {i}: {method}[/cyan]")
+
+            # Special case for installs
+            if params.get("task") == "install":
+                tool_name = params.get("tool_name")
+                version = params.get("version", "latest")
+
+                console.print("[cyan]Contacting MCP server for install...[/cyan]")
+                result = mcp_client.tool_action("install", tool_name, version)
+                result_data = result.get("result", result)
+
+                if result_data.get("status") == "ambiguous":
+                    options = result_data.get("options", [])
+                    if options:
+                        table = Table(title="Multiple Packages Found", show_lines=True)
+                        table.add_column("No.", style="cyan", justify="right")
+                        table.add_column("Name", style="bold")
+                        table.add_column("ID")
+                        table.add_column("Source")
+                        for idx, opt in enumerate(options, 1):
+                            table.add_row(str(idx), opt["name"], opt["id"], opt["source"])
+                        console.print(table)
+
+                        try:
+                            choice = int(input("Enter the number of the package you want to install: "))
+                            if 1 <= choice <= len(options):
+                                selected = options[choice - 1]
+                                console.print(f"[green]Installing {selected['name']} (ID: {selected['id']})...[/green]")
+                                result2 = mcp_client.call_jsonrpc("tool_action_wrapper", {
+                                    "task": "install_by_id",
+                                    "tool_name": selected['id'],
+                                    "version": version
+                                })
+                                formatted_result = format_result(result2)
+                                console.print(Panel(formatted_result, title=f"Step {i}: Install {selected['name']}", border_style="green"))
+                            else:
+                                console.print("[red]Invalid selection. Aborting.[/red]")
+                        except (ValueError, KeyboardInterrupt):
+                            console.print("[red]Invalid input or cancelled. Aborting.[/red]")
                     else:
-                        console.print("[red]Invalid selection. Aborting.[/red]")
-                        return
+                        console.print("[red]No package options found in ambiguous result.[/red]")
                 else:
-                    console.print("[red]No package options found in ambiguous result.[/red]")
-                    return
-            else:
-                formatted_result = format_result(result)
-                console.print(Panel(formatted_result, title=f"{action.capitalize()} {tool_name}", border_style="green"))
-        elif action in ("uninstall", "update", "version"):
-            result = mcp_client.tool_action(action, tool_name, version)
+                    formatted_result = format_result(result)
+                    console.print(Panel(formatted_result, title=f"Step {i}: Install {tool_name}", border_style="green"))
+                continue
+
+            # Code generation case
+            if method == "generate_code":
+                description = params.get("description", "")
+                code = mcp_client.generate_code(description)
+                if code and not code.startswith("[Error]"):
+                    if output_file:
+                        with open(output_file, 'w', encoding='utf-8') as f:
+                            f.write(code)
+                        console.print(f"[green]Code written to {output_file}[/green]")
+                    else:
+                        syntax = Syntax(code, "python", theme="monokai", line_numbers=True)
+                        console.print(Panel(syntax, title=f"Generated Code (Step {i})", border_style="green"))
+                else:
+                    console.print(f"[red]Code generation failed: {code}[/red]")
+                continue
+
+            # Default for all other tasks
+            result = mcp_client.call_jsonrpc(method, params)
             formatted_result = format_result(result)
-            console.print(Panel(formatted_result, title=f"{action.capitalize()} {tool_name}", border_style="green"))
-        elif parsed.get("method") and parsed.get("params") is not None:
-            result = mcp_client.call_jsonrpc(parsed["method"], parsed["params"])
-            formatted_result = format_result(result)
-            console.print(Panel(formatted_result, title=f"{parsed['method']}", border_style="green"))
-        else:
-            console.print(f"[red]Unknown or unsupported action: {action}[/red]")
+            console.print(Panel(formatted_result, title=f"Step {i}: {method}", border_style="green"))
+
     except Exception as e:
         console.print(f"[red]Error executing command: {str(e)}[/red]")
+
+
 
 @app.command()
 def logs(

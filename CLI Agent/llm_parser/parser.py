@@ -51,7 +51,16 @@ AVAILABLE_TOOLS = {
         "params": {
             "description": "Description of the code to generate"
         }
+    },
+    "system_config": {
+        "description": "Perform system configuration tasks like checking env vars or modifying PATH",
+        "params": {
+        "action": "The system_config action to perform (e.g. check, set, append_to_path, remove_from_path, is_port_open, is_service_running, remove_env, list_env)",
+            "tool_name": "The name of the variable, service, or path to act on",
+            "value": "Optional value (used with 'set')"
+        }
     }
+
 }
 
 def build_prompt(user_input: str) -> str:
@@ -82,8 +91,13 @@ def build_prompt(user_input: str) -> str:
   - "python 3.9" → "python3.9"
 - If version is not specified or is "latest", use the default package name.
 - If the package is not available via standard package managers and appears to be a known tool, provide a field called "manual_url" with the official website for manual installation.
-- Return only a single valid JSON object with keys "method" and "params".
-- Do NOT include any explanations, aliases, markdown, or code blocks in the response.
+For system configuration tasks, always include:
+- action: [check, set, append_to_path, remove_from_path, remove_env, list_env, is_port_open, is_service_running]
+- tool_name: the variable, path, or service name
+- value: only for set
+Do NOT include "version" for system_config tasks.
+- If multiple actions are requested, return them as a JSON array.
+- Return only JSON, no extra explanations, markdown, or code fences.
 """
 
     return (
@@ -98,19 +112,20 @@ def build_prompt(user_input: str) -> str:
         "- Version check: {'method': 'tool_action_wrapper', 'params': {'task': 'version', 'tool_name': 'python'}}\n"
         "- System info: {'method': 'info://server', 'params': {}}\n"
         "- Generate code: {'method': 'generate_code', 'params': {'description': 'hello world function'}}\n\n"
+        "- System config: {'method': 'tool_action_wrapper', 'params': {'task': 'system_config', 'action': 'check', 'tool_name': 'JAVA_HOME'}}\n\n"
         f"{additional_guidance}\n\n"
-        "Given the user's instruction, identify the correct tool and return a JSON object with the method and params for a JSON-RPC 2.0 call.\n"
-        "ONLY return valid JSON with no extra explanation.\n\n"
+        "Given the user's instruction, identify the correct tool(s) and return a JSON object if only one action is required, or a JSON array if multiple actions are needed.\n"
+        "DO NOT return multiple objects separated by commas. DO NOT include extra text, explanations, markdown, or comments. ONLY return valid JSON.\n\n"
         f"User input: \"{user_input}\""
+
     )
 
 def parse_user_command(user_input: str) -> Dict[str, Any]:
     """Parses user input into a structured tool command using OpenAI API."""
-
     if not OPENAI_API_KEY:
         return {
             "error": "OpenAI API key not set. Please set OPENAI_API_KEY environment variable.",
-            "fallback": "Your OpenAI API Key should look like sk-[20 characters]T3BlbkFJ[20 characters]"
+            "fallback": "Try using specific commands like 'install docker' or 'check version nodejs'"
         }
 
     try:
@@ -131,6 +146,7 @@ def parse_user_command(user_input: str) -> Dict[str, Any]:
         raw_response = response.choices[0].message.content.strip()
         logging.debug(f"Raw response: {raw_response}")
 
+        # Strip Markdown if present
         if raw_response.startswith("```json"):
             raw_response = raw_response[7:]
         elif raw_response.startswith("```"):
@@ -138,15 +154,25 @@ def parse_user_command(user_input: str) -> Dict[str, Any]:
         if raw_response.endswith("```"):
             raw_response = raw_response[:-3].strip()
 
+        # ✅ Primary parse attempt
         try:
             return json.loads(raw_response)
-        except Exception as e:
+        except json.JSONDecodeError as e:
+            # ✅ Fallback: Detect multiple JSON objects and wrap in array
+            if raw_response.count('"method"') > 1 and not raw_response.strip().startswith('['):
+                fixed_response = "[" + raw_response.replace("}\n,", "},") + "]"
+                try:
+                    return json.loads(fixed_response)
+                except json.JSONDecodeError as inner_e:
+                    logging.error(f"Fallback parsing also failed: {inner_e}")
+
             logging.error(f"Failed to parse JSON from OpenAI response: {e}\nRaw response: {raw_response}")
             return {"error": "Failed to parse JSON from OpenAI response.", "raw_response": raw_response}
 
     except Exception as e:
         logging.error(f"OpenAI API call failed: {e}")
         return {"error": f"OpenAI API call failed: {e}"}
+
 
 def get_command_suggestions() -> list:
     """Return a list of available commands and their descriptions."""
