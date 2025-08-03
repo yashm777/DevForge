@@ -16,7 +16,7 @@ class HTTPMCPClient:
             "params": params
         }
         try:
-            response = requests.post(self.mcp_url, json=payload, timeout=300)
+            response = requests.post(self.mcp_url, json=payload, timeout=30)
             if response.status_code == 200:
                 return response.json()
             else:
@@ -55,3 +55,16 @@ class HTTPMCPClient:
     
     def call_jsonrpc(self, method: str, params: dict):
         return self._make_request(method, params)
+
+    def system_config(self, action: str, tool_name: str, value: Optional[str] = None):
+            """
+            Calls the MCP server for system configuration tasks.
+            """
+            params = {
+                "task": "system_config",
+                "tool_name": tool_name,
+                "action": action
+            }
+            if value:
+                params["value"] = value
+            return self._make_request("tool_action_wrapper", params)

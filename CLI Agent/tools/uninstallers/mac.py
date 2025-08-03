@@ -44,8 +44,3 @@ def uninstall_mac_tool(tool_name):
             "message": f"Uninstall failed: {str(e)}",
             "details": {"tool_name": tool_name, "error": str(e)}
         }
-
-# Legacy function aliases for backwards compatibility
-def uninstall_tool_mac(tool_name):
-    """Legacy function name - use uninstall_mac_tool instead."""
-    return uninstall_mac_tool(tool_name)

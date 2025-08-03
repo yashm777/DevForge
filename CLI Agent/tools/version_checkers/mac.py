@@ -75,32 +75,6 @@ def check_version_mac_tool(tool_name, version="latest"):
             "details": {"requested_tool": tool_name, "error": str(e)}
         }
 
-# Legacy function aliases for backwards compatibility
-def check_version(tool_name, version="latest"):
-    """Legacy function name - use check_version_mac_tool instead."""
-    return check_version_mac_tool(tool_name, version)
-
-def check_version_tool_mac(tool_name):
-    """Legacy function name - use check_version_mac_tool instead."""
-    return check_version_mac_tool(tool_name)
-
-def simple_check_version(tool_name: str) -> str | None:
-    """
-    Simple version check that returns raw output or None.
-    Legacy function for backward compatibility.
-    """
-    try:
-        manager = get_manager()
-        result = manager.check_active_version(tool_name)
-        
-        if result.get("found", False):
-            return result.get("raw_output", "")
-        else:
-            return None
-            
-    except Exception:
-        return None
-
 if __name__ == "__main__":
     import sys
 

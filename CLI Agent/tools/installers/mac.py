@@ -78,9 +78,3 @@ def install_mac_tool(tool_name, version="latest"):
             "message": f"Installation failed: {str(e)}",
             "details": {"tool_name": tool_name, "version": version, "error": str(e)}
         }
-
-
-# Legacy function for backwards compatibility
-def install_tool_mac(tool_name, version="latest"):
-    """Legacy function name - use install_mac_tool instead"""
-    return install_mac_tool(tool_name, version)

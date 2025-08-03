@@ -63,18 +63,18 @@ def ensure_server_running(host: str = "localhost", port: int = 8000, timeout: in
         # Check if server is already running
         if is_server_running(host, port):
             return True
-            
+
         # Start the server in background
         process = subprocess.Popen(
             [sys.executable, "-m", "mcp_server.mcp_server", "--host", host, "--port", str(port)],
-            stdout=subprocess.PIPE,  # <--- changed from DEVNULL
-            stderr=subprocess.PIPE,  # <--- changed from DEVNULL
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             start_new_session=True
         )
-        
+
         # Wait a bit for the server to start
         time.sleep(2)
-        
+
         # Check if server is now running
         if is_server_running(host, port):
             return True
@@ -89,7 +89,7 @@ def ensure_server_running(host: str = "localhost", port: int = 8000, timeout: in
             except Exception as e:
                 print(f"Error terminating MCP server process: {e}")
             return False
-            
+
     except Exception as e:
         print(f"Exception while starting MCP server: {e}")
         return False

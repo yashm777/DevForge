@@ -24,11 +24,14 @@ def get_post_upgrade_instructions(tool_name: str, version: str) -> str:
     """
     tool_base = tool_name.split('@')[0].lower()
     
+    # For Java/OpenJDK, extract major version for path
+    java_major_version = version.split('.')[0] if tool_base in ['java', 'openjdk'] else None
+    
     instructions = {
         'node': f"• Verify: `node --version` should show v{version}\n• Use: `npm install -g <package>` to install global packages\n• Consider using `nvm` for managing multiple Node.js versions",
         'python': f"• Verify: `python3 --version` should show {version}\n• Use: `pip3 install <package>` to install packages\n• Consider using `pyenv` for managing multiple Python versions",
-        'java': f"• Verify: `java --version` should show {version}\n• Set JAVA_HOME: `export JAVA_HOME=/opt/homebrew/Cellar/openjdk@{version.split('.')[0]}/{version}/libexec/openjdk.jdk/Contents/Home`\n• Add to ~/.zshrc: `echo 'export JAVA_HOME=/opt/homebrew/Cellar/openjdk@{version.split('.')[0]}/{version}/libexec/openjdk.jdk/Contents/Home' >> ~/.zshrc`",
-        'openjdk': f"• Verify: `java --version` should show OpenJDK {version}\n• Set JAVA_HOME: `export JAVA_HOME=/opt/homebrew/Cellar/openjdk@{version.split('.')[0]}/{version}/libexec/openjdk.jdk/Contents/Home`\n• Add to ~/.zshrc: `echo 'export JAVA_HOME=/opt/homebrew/Cellar/openjdk@{version.split('.')[0]}/{version}/libexec/openjdk.jdk/Contents/Home' >> ~/.zshrc`",
+        'java': f"• Verify: `java --version` should show {version}\n• Copy this export command:\nexport JAVA_HOME=/opt/homebrew/Cellar/openjdk@{java_major_version}/{version}/libexec/openjdk.jdk/Contents/Home\n• Add to ~/.zshrc:\necho 'export JAVA_HOME=/opt/homebrew/Cellar/openjdk@{java_major_version}/{version}/libexec/openjdk.jdk/Contents/Home' >> ~/.zshrc",
+        'openjdk': f"• Verify: `java --version` should show OpenJDK {version}\n• Copy this export command:\nexport JAVA_HOME=/opt/homebrew/Cellar/openjdk@{java_major_version}/{version}/libexec/openjdk.jdk/Contents/Home\n• Add to ~/.zshrc:\necho 'export JAVA_HOME=/opt/homebrew/Cellar/openjdk@{java_major_version}/{version}/libexec/openjdk.jdk/Contents/Home' >> ~/.zshrc",
         'go': f"• Verify: `go version` should show {version}\n• Create your first project: `go mod init myproject`\n• Build projects: `go build` or `go run main.go`",
         'docker': f"• Verify: `docker --version` should show {version}\n• Start Docker daemon if needed\n• Try: `docker run hello-world` to test installation",
         'git': f"• Verify: `git --version` should show {version}\n• Configure: `git config --global user.name \"Your Name\"`\n• Configure: `git config --global user.email \"your@email.com\"`",
