@@ -52,7 +52,6 @@ AVAILABLE_TOOLS = {
             "description": "Description of the code to generate"
         }
     },
-
     "system_config": {
         "description": "Perform system configuration tasks like checking env vars or modifying PATH",
         "params": {
@@ -60,39 +59,18 @@ AVAILABLE_TOOLS = {
             "tool_name": "The name of the variable, service, or path to act on",
             "value": "Optional value (used with 'set')"
         }
-    "git_clone": {
-        "description": "Clone a Git repository to a local directory",
-        "params": {
-            "repo_url": "URL of the Git repository to clone",
-            "dest_dir": "Destination directory (optional)",
-            "branch": "Branch to checkout after cloning (optional)"
-        }
     },
-    "git_switch_branch": {
-        "description": "Switch to a branch in a local Git repository (creates it if it doesn't exist)",
+    "git_setup": {
+        "description": "Perform git-related tasks such as cloning, switching branches, generating SSH keys, adding SSH keys to GitHub, or checking SSH authentication.",
         "params": {
-            "dest_dir": "Path to the local Git repository",
-            "branch": "Branch name to switch to",
-            "username": "GitHub username (optional, for configuring credentials)",
-            "email": "GitHub email (optional, for configuring credentials)"
+            "action": "The git action to perform (clone, switch_branch, generate_ssh_key, add_ssh_key, check_ssh_key_auth)",
+            "repo_url": "URL of the Git repository to clone (required for clone)",
+            "dest_dir": "Destination directory (optional, for clone and switch_branch)",
+            "branch": "Branch name (optional, for clone and switch_branch)",
+            "username": "GitHub username (optional, for switch_branch)",
+            "email": "Email address (optional, for generate_ssh_key, add_ssh_key, switch_branch)",
+            "pat": "GitHub Personal Access Token (optional, for add_ssh_key)"
         }
-    },
-    "git_generate_ssh_key": {
-        "description": "Generate a new SSH key for GitHub",
-        "params": {
-            "email": "Email address to associate with the SSH key"
-        }
-    },
-    "git_add_ssh_key": {
-        "description": "Add your local SSH public key to GitHub using a PAT (or provide manual instructions if no PAT)",
-        "params": {
-            "pat": "GitHub Personal Access Token (optional, if provided will use API)",
-            "email": "Email address associated with the SSH key (optional)"
-        }
-    },
-    "git_check_ssh_auth": {
-        "description": "Check if your local SSH key is authorized with GitHub",
-        "params": {}
     }
 
 }
