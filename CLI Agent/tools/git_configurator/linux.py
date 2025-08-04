@@ -2,7 +2,6 @@ import subprocess
 import os
 from pathlib import Path
 import shutil
-import getpass
 import logging
 from urllib.parse import urlparse
 import requests
@@ -19,15 +18,6 @@ def is_git_installed() -> bool:
     Check if Git is installed on the system.
     """
     return shutil.which("git") is not None
-
-
-def prompt_git_credentials() -> tuple[str, str]:
-    """
-    Prompt the user for GitHub username and password/token securely.
-    """
-    username = input("Enter your GitHub username: ").strip()
-    password = getpass.getpass("Enter your GitHub password or PAT (input hidden): ").strip()
-    return username, password
 
 
 def configure_git_credentials(username: str, email: str):
@@ -155,14 +145,6 @@ def clone_repository_ssh(repo_url: str, dest_dir: str = None, branch: str = None
     """
     logging.info(f"Requested clone for repo: {repo_url} into {dest_dir or 'current directory'}")
 
-    # Improved error handling for repo_url
-    if not repo_url or not isinstance(repo_url, str) or not repo_url.strip():
-        logging.error(f"Invalid or missing repository URL: {repo_url!r}")
-        raise ValueError(
-            "A valid SSH GitHub repository URL must be provided for cloning. "
-            "Example: git@github.com:username/repo.git"
-        )
-
     if not is_ssh_url(repo_url):
         logging.error(f"Unsupported repository URL format: {repo_url!r}")
         raise RuntimeError(
@@ -259,14 +241,11 @@ def perform_git_setup(
         elif action == "switch_branch":
             if not dest_dir or not branch:
                 return {"status": "error", "message": "Both repo path and branch name are required."}
-            if not username or not email:
-                username, email = prompt_git_credentials()
             configure_git_credentials(username, email)
             msg = switch_branch(dest_dir, branch)
             return {"status": "success", "action": action, "details": {"message": msg, "repo_path": dest_dir, "branch": branch}}
 
         elif action == "add_ssh_key":
-            # You need to implement add_ssh_key_to_github(pubkey, pat) and call it here
             key_path = os.path.expanduser("~/.ssh/id_rsa.pub")
             if not os.path.exists(key_path):
                 return {"status": "error", "message": "SSH public key not found. Please generate it first."}
@@ -333,6 +312,7 @@ def setup_github_ssh_key(email: str, pat: str = None):
         print("2. Go to https://github.com/settings/ssh/new")
         print("3. Paste the key and save.")
         input("\nPress Enter after you have added the SSH key to your GitHub account...")
+
 
 def check_ssh_key_auth() -> dict:
     """
