@@ -16,7 +16,7 @@ class HTTPMCPClient:
             "params": params
         }
         try:
-            response = requests.post(self.mcp_url, json=payload, timeout=30)
+            response = requests.post(self.mcp_url, json=payload, timeout=100)
             if response.status_code == 200:
                 return response.json()
             else:
@@ -68,3 +68,19 @@ class HTTPMCPClient:
             if value:
                 params["value"] = value
             return self._make_request("tool_action_wrapper", params)
+    
+    def git_setup(self, action: str, repo_url: str = "", branch: str = "", username: str = "", email: str = "", dest_dir: str = ""):
+        """
+        Perform git-related actions via the MCP server.
+        action: 'clone', 'switch_branch', or 'generate_ssh_key'
+        """
+        params = {
+            "task": "git_setup",
+            "action": action,
+            "repo_url": repo_url,
+            "branch": branch,
+            "username": username,
+            "email": email,
+            "dest_dir": dest_dir
+        }
+        return self._make_request("tool_action_wrapper", params)

@@ -15,13 +15,15 @@ from tools.installers.windows import install_windows_tool, install_windows_tool_
 from tools.installers.linux import install_linux_tool
 from tools.uninstallers.mac import uninstall_mac_tool
 from tools.uninstallers.windows import uninstall_windows_tool
-from tools.uninstallers.linux import uninstall_tool_linux
+from tools.uninstallers.linux import uninstall_linux_tool
 from tools.version_checkers.mac import check_version as check_version_mac
 from tools.version_checkers.windows import check_version as check_version_windows
 from tools.version_checkers.linux import check_version as check_version_linux
 from tools.upgraders.mac import handle_tool_mac
-from tools.upgraders.windows import handle_tool
-from tools.upgraders.linux import handle_tool
+from tools.upgraders.windows import handle_tool as handle_tool_windows
+from tools.upgraders.linux import handle_tool as handle_tool_linux
+from tools.git_configurator.mac import perform_git_setup as perform_git_setup_mac
+from tools.git_configurator.linux import perform_git_setup as perform_git_setup_linux
 import traceback
 
 # Configure logging
@@ -86,7 +88,7 @@ def uninstall_tool(tool):
     elif os_type == "darwin":
         result = uninstall_mac_tool(tool)
     elif os_type == "linux":
-        result = uninstall_tool_linux(tool)
+        result = uninstall_linux_tool(tool)
     else:
         result = {"status": "error", "message": f"Unsupported OS: {os_type}"}
     
@@ -112,11 +114,11 @@ def upgrade_tool(tool, version="latest"):
     add_log_entry("INFO", f"Upgrade request for tool: {tool} (version: {version})")
     os_type = platform.system().lower()
     if os_type == "windows":
-        result = handle_tool(tool, version)
+        result = handle_tool_windows(tool, version)
     elif os_type == "darwin":
         result = handle_tool_mac(tool, version)
     elif os_type == "linux":
-        result = handle_tool(tool, version)
+        result = handle_tool_linux(tool, version)
     else:
         result = {"status": "error", "message": f"Unsupported OS: {os_type}"}
     
@@ -139,6 +141,7 @@ def get_system_info():
 def get_server_logs(lines: int = 50):
     """Get the last N log entries"""
     return list(server_logs)[-lines:]
+
 
 def handle_system_config(tool, action="check", value=None):
     os_type = platform.system().lower()
@@ -172,6 +175,30 @@ def handle_system_config(tool, action="check", value=None):
         return {"status": "error", "message": f"Unknown system_config action: {action}"}
 
 
+def git_setup_dispatcher(action, repo_url="", branch="", username="", email="", dest_dir=""):
+    os_type = platform.system().lower()
+    if os_type == "darwin":
+        return perform_git_setup_mac(
+            action=action,
+            repo_url=repo_url,
+            branch=branch,
+            username=username,
+            email=email,
+            dest_dir=dest_dir
+        )
+    elif os_type == "linux":
+        return perform_git_setup_linux(
+            action=action,
+            repo_url=repo_url,
+            branch=branch,
+            username=username,
+            email=email,
+            dest_dir=dest_dir
+        )
+    else:
+        return {"status": "error", "message": f"Git setup is not supported on OS: {os_type}"}
+
+
 # Task dispatch dictionary
 task_handlers = {
     "install": install_tool,
@@ -181,6 +208,7 @@ task_handlers = {
     "upgrade": upgrade_tool,
     "version": check_version,
     "system_config": handle_system_config,
+    "git_setup": git_setup_dispatcher, 
 }
 
 @app.post("/mcp/")
@@ -196,25 +224,95 @@ async def mcp_endpoint(request: Request):
         logger.info(f"Method: {method}, Params: {params}")
 
         result = None
+
         if method == "tool_action_wrapper":
             task = params.get("task")
-            tool = params.get("tool_name")
-            version = params.get("version", "latest")
 
-            handler = task_handlers.get(task)
-            
-            if handler:
-                # uninstall_tool expects only tool param, others also get version
-                if task == "system_config":
-                    action = params.get("action", "check")
-                    value = params.get("value", None)
-                    result = handler(tool, action, value)
-                elif task == "uninstall":
-                    result = handler(tool)
+            if task == "git_setup":
+                action = params.get("action")
+                repo_url = params.get("repo_url", "")
+                branch = params.get("branch", "")
+                username = params.get("username", "")
+                email = params.get("email", "")
+                dest_dir = params.get("dest_dir", "")
+                os_type = platform.system().lower()
+
+                # Minimal input validation
+                missing_fields = []
+                if not action:
+                    missing_fields.append("action")
+                if action == "clone" and not repo_url:
+                    missing_fields.append("repo_url")
+                if action == "switch_branch" and (not dest_dir or not branch):
+                    if not dest_dir:
+                        missing_fields.append("dest_dir")
+                    if not branch:
+                        missing_fields.append("branch")
+                if action == "generate_ssh_key" and not email:
+                    missing_fields.append("email")
+
+                if missing_fields:
+                    result = {
+                        "status": "error",
+                        "action": action,
+                        "message": f"Missing required fields: {', '.join(missing_fields)}"
+                    }
                 else:
-                    result = handler(tool, version)
+                    try:
+                        if os_type == "darwin":
+                            git_result = perform_git_setup_mac(
+                                action=action,
+                                repo_url=repo_url,
+                                branch=branch,
+                                username=username,
+                                email=email,
+                                dest_dir=dest_dir
+                            )
+                        elif os_type == "linux":
+                            git_result = perform_git_setup_linux(
+                                action=action,
+                                repo_url=repo_url,
+                                branch=branch,
+                                username=username,
+                                email=email,
+                                dest_dir=dest_dir
+                            )
+                        else:
+                            git_result = {"status": "error", "message": f"Git setup is not supported on OS: {os_type}"}
+
+                        result = {
+                            "status": "error" if git_result.get("status") == "error" else "success",
+                            "action": action,
+                            "details": git_result
+                        }
+                        add_log_entry("INFO", f"Git setup action '{action}' result: {result['status']}", {"action": action, "details": git_result})
+                    except Exception as e:
+                        result = {
+                            "status": "error",
+                            "action": action,
+                            "message": str(e)
+                        }
+                        add_log_entry("ERROR", f"Git setup action '{action}' failed: {str(e)}", {"action": action})
+
             else:
-                result = {"status": "error", "message": f"Unknown task: {task}"}
+                tool = params.get("tool_name")
+                version = params.get("version", "latest")
+                handler = task_handlers.get(task)
+
+                if handler:
+                    if task == "system_config":
+                        action = params.get("action", "check")
+                        value = params.get("value", None)
+                        result = handler(tool, action, value)
+                    elif task == "uninstall":
+                        result = handler(tool)
+                    elif task == "install_by_id":
+                        package_id = params.get("package_id")
+                        result = handler(package_id, version)
+                    else:
+                        result = handler(tool, version)
+                else:
+                    result = {"status": "error", "message": f"Unknown task: {task}"}
 
         elif method == "generate_code":
             description = params.get("description")
@@ -239,13 +337,12 @@ async def mcp_endpoint(request: Request):
             },
             media_type="application/json"
         )
+
     except Exception as e:
-        # Log the full traceback for debugging
         error_msg = f"Exception in mcp_endpoint: {e}"
         add_log_entry("ERROR", error_msg, {"traceback": traceback.format_exc()})
         logger.error(f"Exception in mcp_endpoint: {e}\n{traceback.format_exc()}")
 
-        # Return a JSON error response
         return JSONResponse(
             status_code=500,
             content={
