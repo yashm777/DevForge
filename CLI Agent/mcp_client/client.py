@@ -55,6 +55,21 @@ class HTTPMCPClient:
     
     def call_jsonrpc(self, method: str, params: dict):
         return self._make_request(method, params)
+
+
+    def system_config(self, action: str, tool_name: str, value: Optional[str] = None):
+            """
+            Calls the MCP server for system configuration tasks.
+            """
+            params = {
+                "task": "system_config",
+                "tool_name": tool_name,
+                "action": action
+            }
+            if value:
+                params["value"] = value
+            return self._make_request("tool_action_wrapper", params)
+
     
     def git_setup(self, action: str, repo_url: str = "", branch: str = "", username: str = "", email: str = "", dest_dir: str = ""):
         """
@@ -71,3 +86,4 @@ class HTTPMCPClient:
             "dest_dir": dest_dir
         }
         return self._make_request("tool_action_wrapper", params)
+
