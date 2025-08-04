@@ -39,8 +39,24 @@ def format_result(result: Dict[str, Any]) -> str:
                 for k, v in inner_result.items():
                     table.add_row(f"[bold]{k}[/bold]", str(v))
                 return table
+            # --- Updated error extraction logic ---
             if "message" in inner_result:
                 return inner_result["message"]
+            elif "details" in inner_result and isinstance(inner_result["details"], dict):
+                details = inner_result["details"]
+                if "message" in details:
+                    return details["message"]
+                elif "status" in details:
+                    status = details["status"]
+                    message = details.get("message", "")
+                    if status == "success":
+                        return f"✓ {message}" if message else "✓ Operation completed successfully"
+                    elif status == "error":
+                        return f"✗ {message}" if message else "✗ Operation failed"
+                    else:
+                        return message
+                else:
+                    return str(details)
             elif "status" in inner_result:
                 status = inner_result["status"]
                 message = inner_result.get("message", "")
@@ -73,16 +89,24 @@ def setup_instances():
     """Initialize global instances"""
     global mcp_client
     if mcp_client is None:
-        # Ensure MCP server is running before creating client
-        with console.status("[bold yellow]Checking MCP server status..."):
-            started = ensure_server_running()
-            if not started:
-                console.print("[red]Failed to start MCP server. See error output above for details.[/red]")
-                return False
-            else:
-                console.print("[green]✓ MCP server is running[/green]")
-        mcp_client = HTTPMCPClient()
+        try:
+            with console.status("[bold yellow]Checking MCP server status..."):
+                started, error_message = ensure_server_running()
+                if not started:
+                    console.print("[red]Failed to start MCP server.[/red]")
+                    if error_message:
+                        console.print(f"[red]Server error details:[/red]\n{error_message}")
+                    return False
+                else:
+                    console.print("[green]✓ MCP server is running[/green]")
+            mcp_client = HTTPMCPClient()
+        except Exception as e:
+            import traceback
+            console.print("[red]Exception while starting MCP server:[/red]")
+            console.print(traceback.format_exc())
+            return False
     return True
+
 
 @app.command()
 def run(
@@ -251,4 +275,6 @@ def main():
     app()
 
 if __name__ == "__main__":
+
     main() 
+

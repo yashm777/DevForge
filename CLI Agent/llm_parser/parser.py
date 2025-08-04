@@ -52,6 +52,7 @@ AVAILABLE_TOOLS = {
             "description": "Description of the code to generate"
         }
     },
+
     "system_config": {
         "description": "Perform system configuration tasks like checking env vars or modifying PATH",
         "params": {
@@ -59,6 +60,39 @@ AVAILABLE_TOOLS = {
             "tool_name": "The name of the variable, service, or path to act on",
             "value": "Optional value (used with 'set')"
         }
+    "git_clone": {
+        "description": "Clone a Git repository to a local directory",
+        "params": {
+            "repo_url": "URL of the Git repository to clone",
+            "dest_dir": "Destination directory (optional)",
+            "branch": "Branch to checkout after cloning (optional)"
+        }
+    },
+    "git_switch_branch": {
+        "description": "Switch to a branch in a local Git repository (creates it if it doesn't exist)",
+        "params": {
+            "dest_dir": "Path to the local Git repository",
+            "branch": "Branch name to switch to",
+            "username": "GitHub username (optional, for configuring credentials)",
+            "email": "GitHub email (optional, for configuring credentials)"
+        }
+    },
+    "git_generate_ssh_key": {
+        "description": "Generate a new SSH key for GitHub",
+        "params": {
+            "email": "Email address to associate with the SSH key"
+        }
+    },
+    "git_add_ssh_key": {
+        "description": "Add your local SSH public key to GitHub using a PAT (or provide manual instructions if no PAT)",
+        "params": {
+            "pat": "GitHub Personal Access Token (optional, if provided will use API)",
+            "email": "Email address associated with the SSH key (optional)"
+        }
+    },
+    "git_check_ssh_auth": {
+        "description": "Check if your local SSH key is authorized with GitHub",
+        "params": {}
     }
 
 }
@@ -106,7 +140,11 @@ Do NOT include "version" for system_config tasks.
         "IMPORTANT: For install, uninstall, update, and version actions, use method 'tool_action_wrapper' "
         "with params containing 'task' and 'tool_name'.\n"
         "For system info, use method 'info://server' with empty params.\n"
-        "For code generation, use method 'generate_code' with 'description' param.\n\n"
+        "For code generation, use method 'generate_code' with 'description' param.\n"
+        "For git actions (clone, switch_branch, generate_ssh_key, add_ssh_key, check_ssh_key_auth), always use method 'tool_action_wrapper' with params:\n"
+        "    - 'task': 'git_setup'\n"
+        "    - 'action': 'clone', 'switch_branch', 'generate_ssh_key', 'add_ssh_key', or 'check_ssh_key_auth'\n"
+        "    - plus the required parameters for each action.\n\n"
         "Examples:\n"
         "- Install: {'method': 'tool_action_wrapper', 'params': {'task': 'install', 'tool_name': 'docker'}}\n"
         "- Version check: {'method': 'tool_action_wrapper', 'params': {'task': 'version', 'tool_name': 'python'}}\n"
