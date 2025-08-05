@@ -4,6 +4,7 @@ import time
 import threading
 from typing import Optional
 from .server_checker import is_server_running, wait_for_server
+import select
 
 def start_server_background(host: str = "localhost", port: int = 8000) -> Optional[subprocess.Popen]:
     """
@@ -58,7 +59,6 @@ def ensure_server_running(host: str = "localhost", port: int = 8000, timeout: in
         if is_server_running(host, port):
             return True, None
 
-        # Start the server in background
         process = subprocess.Popen(
             [sys.executable, "-m", "mcp_server.mcp_server", "--host", host, "--port", str(port)],
             stdout=subprocess.PIPE,
@@ -66,18 +66,23 @@ def ensure_server_running(host: str = "localhost", port: int = 8000, timeout: in
             start_new_session=True
         )
 
-        time.sleep(2)
+        # Give the server more time to start
+        time.sleep(4)
 
         if is_server_running(host, port):
             return True, None
         else:
+            # Try to read all output and error (blocking, but with timeout)
             try:
                 out, err = process.communicate(timeout=5)
-                error_message = f"[MCP Server stdout]:\n{out.decode(errors='ignore')}\n[MCP Server stderr]:\n{err.decode(errors='ignore')}"
+            except Exception as e:
+                out, err = b"", f"Error reading process output: {e}".encode()
+            error_message = f"[MCP Server stdout]:\n{out.decode(errors='ignore')}\n[MCP Server stderr]:\n{err.decode(errors='ignore')}"
+            try:
                 process.terminate()
                 process.wait(timeout=5)
             except Exception as e:
-                error_message = f"Error terminating MCP server process: {e}"
+                error_message += f"\nError terminating MCP server process: {e}"
             return False, error_message
 
     except Exception as e:
