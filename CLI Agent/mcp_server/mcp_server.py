@@ -50,7 +50,8 @@ async def mcp_endpoint(request: Request):
         if method == "tool_action_wrapper":
             task = params.get("task")
 
-            if task == "git_setup":
+            # Accept both 'git_setup' and 'git_Setup' (case-insensitive)
+            if task and task.lower() == "git_setup":
                 action = params.get("action")
                 repo_url = params.get("repo_url", "")
                 branch = params.get("branch", "")
@@ -116,7 +117,7 @@ async def mcp_endpoint(request: Request):
                         }
                         add_log_entry("ERROR", f"Git setup action '{action}' failed: {str(e)}", {"action": action})
 
-            else:
+            elif handler:
                 tool = params.get("tool_name")
                 version = params.get("version", "latest")
                 handler = task_handlers.get(task)
