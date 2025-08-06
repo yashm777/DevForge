@@ -329,7 +329,7 @@ def check_ssh_key_auth() -> dict:
     try:
         result = subprocess.run(
             ["ssh", "-T", "git@github.com"],
-            capture_output=True, text=True, check=True
+            capture_output=True, text=True, check=False 
         )
         output = (result.stdout + result.stderr).lower()
         # Treat "successfully authenticated" or "does not provide shell access" as success
@@ -337,5 +337,5 @@ def check_ssh_key_auth() -> dict:
             return {"status": "success", "message": "SSH key is correctly configured and connected to GitHub!"}
         else:
             return {"status": "warning", "message": result.stdout.strip() or result.stderr.strip()}
-    except subprocess.CalledProcessError as e:
-        return {"status": "error", "message": e.stderr or e.stdout or str(e)}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
