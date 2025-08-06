@@ -219,13 +219,11 @@ async def mcp_endpoint(request: Request):
         result = None
         if method == "tool_action_wrapper":
             task = params.get("task")
-            tool = params.get("tool_name")
             version = params.get("version", "latest")
-
-            handler = task_handlers.get(task.lower() if task else None)  # Use lower() for robustness
-
+            handler = task_handlers.get(task)
+            
             if handler:
-                if task.lower() == "git_setup":
+                if task == "git_setup":
                     action = params.get("action")
                     repo_url = params.get("repo_url", "")
                     branch = params.get("branch", "")
@@ -234,6 +232,7 @@ async def mcp_endpoint(request: Request):
                     dest_dir = params.get("dest_dir", "")
                     result = handler(action, repo_url, branch, username, email, dest_dir)
                 elif task == "system_config":
+                    tool = params.get("tool_name")
                     action = params.get("action", "check")
                     value = params.get("value", None)
                     result = handler(tool, action, value)
