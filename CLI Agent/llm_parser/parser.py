@@ -70,6 +70,16 @@ AVAILABLE_TOOLS = {
         "description": "Uninstall a VSCode extension",
         "params": {
             "tool_name": "The ID of the extension to uninstall (e.g., 'ms-python.python')"
+    "git_setup": {
+        "description": "Perform git-related tasks such as cloning, switching branches, generating SSH keys, adding SSH keys to GitHub, or checking SSH authentication.",
+        "params": {
+            "action": "The git action to perform (clone, switch_branch, generate_ssh_key, add_ssh_key, check_ssh_key_auth)",
+            "repo_url": "URL of the Git repository to clone (required for clone)",
+            "dest_dir": "Destination directory (optional, for clone and switch_branch)",
+            "branch": "Branch name (optional, for clone and switch_branch)",
+            "username": "GitHub username (optional, for switch_branch)",
+            "email": "Email address (optional, for generate_ssh_key, add_ssh_key, switch_branch)",
+            "pat": "GitHub Personal Access Token (optional, for add_ssh_key)"
         }
     }
 
@@ -104,13 +114,8 @@ def build_prompt(user_input: str) -> str:
   - "python 3.9" → "python3.9"
 - If version is not specified or is "latest", use the default package name.
 - If the package is not available via standard package managers and appears to be a known tool, provide a field called "manual_url" with the official website for manual installation.
-For system configuration tasks, always include:
-- action: [check, set, append_to_path, remove_from_path, remove_env, list_env, is_port_open, is_service_running]
-- tool_name: the variable, path, or service name
-- value: only for set
-Do NOT include "version" for system_config tasks.
-- If multiple actions are requested, return them as a JSON array.
-- Return only JSON, no extra explanations, markdown, or code fences.
+- Return only a single valid JSON object with keys "method" and "params".
+- Do NOT include any explanations, aliases, markdown, or code blocks in the response.
 """
 
     return (
@@ -126,8 +131,10 @@ Do NOT include "version" for system_config tasks.
         "- 'I need python': {'method': 'tool_action_wrapper', 'params': {'task': 'install', 'tool_name': 'python3'}}\n"
         "- Version check: {'method': 'tool_action_wrapper', 'params': {'task': 'version', 'tool_name': 'python'}}\n"
         "- System info: {'method': 'info://server', 'params': {}}\n"
-        "- Generate code: {'method': 'generate_code', 'params': {'description': 'hello world function'}}\n\n"
-        "- System config: {'method': 'tool_action_wrapper', 'params': {'task': 'system_config', 'action': 'check', 'tool_name': 'JAVA_HOME'}}\n\n"
+        "- Generate code: {'method': 'generate_code', 'params': {'description': 'hello world function'}}\n"
+        "- System config: {'method': 'tool_action_wrapper', 'params': {'task': 'system_config', 'action': 'check', 'tool_name': 'JAVA_HOME'}}\n"
+        "- Git setup (clone): {'method': 'tool_action_wrapper', 'params': {'task': 'git_setup', 'action': 'clone', 'repo_url': 'git@github.com:user/repo.git', 'dest_dir': '/path/to/dir'}}\n"
+        "- Git setup (generate SSH key): {'method': 'tool_action_wrapper', 'params': {'task': 'git_setup', 'action': 'generate_ssh_key', 'email': 'user@example.com'}}\n"
         f"{additional_guidance}\n\n"
         "Given the user's instruction, identify the correct tool(s) and return a JSON object if only one action is required, or a JSON array if multiple actions are needed.\n"
         "DO NOT return multiple objects separated by commas. DO NOT include extra text, explanations, markdown, or comments. ONLY return valid JSON.\n\n"
@@ -199,6 +206,7 @@ def get_command_suggestions() -> list:
         })
     return suggestions
 
+
 def generate_smart_tool_url(tool_name: str) -> str:
     if not OPENAI_API_KEY:
         return f"https://www.google.com/search?q=download+{tool_name.replace(' ', '+')}+official"
@@ -209,7 +217,7 @@ def generate_smart_tool_url(tool_name: str) -> str:
             f"You are helping a developer locate the most appropriate and official website or trusted source to download or learn more about a tool called '{tool_name}'."
 "If the tool is well-known (e.g., Java, Docker, IntelliJ), return the best URL — preferably the official website, trusted package repository (like apt, brew, snap), or GitHub page."
 "If the tool is less known, research and return the most relevant and safe-looking link. You may include the GitHub repo, docs, or publisher's page — whichever looks best."
-"If the tool name is very unclear, gibberish, or seems unrelated to software (e.g., 'carrot3000'), respond with a short note saying it doesn’t appear to be a recognized tool."
+"If the tool name is very unclear, gibberish, or seems unrelated to software (e.g., 'carrot3000'), respond with a short note saying it doesn't appear to be a recognized tool."
 "Return only the single most appropriate URL or response."
         )
 
