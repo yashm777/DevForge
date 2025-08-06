@@ -99,6 +99,13 @@ def run(
         if isinstance(parsed, dict) and "error" in parsed:
             console.print(f"[red]Error parsing command: {parsed['error']}[/red]")
             return
+            
+        # Handle special case when parser returns a manual URL
+        if isinstance(parsed, dict) and "manual_url" in parsed and not parsed.get("method"):
+            url = parsed["manual_url"]
+            console.print(f"[yellow]The tool '{command.split()[1] if len(command.split()) > 1 else command}' requires manual installation.[/yellow]")
+            console.print(f"[blue]Please download from: {url}[/blue]")
+            return
 
         if isinstance(parsed, dict):
             parsed = [parsed]
@@ -106,8 +113,6 @@ def run(
         for i, action_item in enumerate(parsed, start=1):
             method = action_item.get("method")
             params = action_item.get("params", {})
-
-            console.print(f"[cyan]Executing Step {i}: {method}[/cyan]")
 
             # Special case for installs
             if params.get("task") == "install":
@@ -141,7 +146,7 @@ def run(
                                     "version": version
                                 })
                                 formatted_result = format_result(result2)
-                                console.print(Panel(formatted_result, title=f"Step {i}: Install {selected['name']}", border_style="green"))
+                                console.print(Panel(formatted_result, title=f"Install {selected['name']}", border_style="green"))
                             else:
                                 console.print("[red]Invalid selection. Aborting.[/red]")
                         except (ValueError, KeyboardInterrupt):
@@ -150,7 +155,26 @@ def run(
                         console.print("[red]No package options found in ambiguous result.[/red]")
                 else:
                     formatted_result = format_result(result)
-                    console.print(Panel(formatted_result, title=f"Step {i}: Install {tool_name}", border_style="green"))
+                    console.print(Panel(formatted_result, title=f"Install {tool_name}", border_style="green"))
+                continue
+            
+            if method == "install_vscode_extension":
+                extension_id = params.get("extension_id") or params.get("tool_name")
+                result = mcp_client.call_jsonrpc("tool_action_wrapper", {
+                    "task": "install_vscode_extension",
+                    "extension_id": extension_id
+                })
+                formatted_result = format_result(result)
+                console.print(Panel(formatted_result, title=f"Install VSCode Extension", border_style="green"))
+                continue
+                
+            if method == "uninstall_vscode_extension":
+                extension_id = params.get("extension_id") or params.get("tool_name")
+                result = mcp_client.call_jsonrpc("uninstall_vscode_extension", {
+                    "extension_id": extension_id
+                })
+                formatted_result = format_result(result)
+                console.print(Panel(formatted_result, title=f"Uninstall VSCode Extension", border_style="green"))
                 continue
 
             # Code generation case
@@ -251,4 +275,4 @@ def main():
     app()
 
 if __name__ == "__main__":
-    main() 
+    main()
