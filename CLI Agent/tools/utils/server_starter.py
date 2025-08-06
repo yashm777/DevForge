@@ -4,15 +4,16 @@ import time
 import threading
 from typing import Optional
 from .server_checker import is_server_running, wait_for_server
+import select
 
 def start_server_background(host: str = "localhost", port: int = 8000) -> Optional[subprocess.Popen]:
     """
     Start the MCP server in the background.
-    
+
     Args:
         host (str): Host to bind to (default: localhost)
         port (int): Port to bind to (default: 8000)
-        
+
     Returns:
         Optional[subprocess.Popen]: Process object if started successfully, None otherwise
     """
@@ -20,7 +21,7 @@ def start_server_background(host: str = "localhost", port: int = 8000) -> Option
         # Check if server is already running
         if is_server_running(host, port):
             return None
-            
+
         # Start the server in background
         process = subprocess.Popen(
             [sys.executable, "-m", "mcp_server.mcp_server", "--host", host, "--port", str(port)],
@@ -28,10 +29,10 @@ def start_server_background(host: str = "localhost", port: int = 8000) -> Option
             stderr=subprocess.DEVNULL,
             start_new_session=True
         )
-        
+
         # Wait a bit for the server to start
         time.sleep(2)
-        
+
         # Check if server is now running
         if is_server_running(host, port):
             return process
@@ -39,28 +40,22 @@ def start_server_background(host: str = "localhost", port: int = 8000) -> Option
             # If server didn't start, try to terminate the process
             try:
                 process.terminate()
-                process.wait(timeout=5)
+                process.wait(timeout=20)
             except:
                 pass
             return None
-            
+
     except Exception:
         return None
 
-def ensure_server_running(host: str = "localhost", port: int = 8000, timeout: int = 30) -> bool:
+def ensure_server_running(host: str = "localhost", port: int = 8000, timeout: int = 60):
     """
     Ensure the MCP server is running, starting it if necessary.
-    
-    Args:
-        host (str): Host to bind to (default: localhost)
-        port (int): Port to bind to (default: 8000)
-        timeout (int): Maximum time to wait for server to start (default: 30)
-        
+
     Returns:
-        bool: True if server is running, False otherwise
+        bool: True if running or started successfully, False otherwise
     """
     try:
-        # Check if server is already running
         if is_server_running(host, port):
             return True
 
@@ -79,11 +74,13 @@ def ensure_server_running(host: str = "localhost", port: int = 8000, timeout: in
         if is_server_running(host, port):
             return True
         else:
-            # If server didn't start, print error output
+            # Try to read all output and error (blocking, but with timeout)
             try:
                 out, err = process.communicate(timeout=5)
-                print("[MCP Server stdout]:", out.decode(errors="ignore"))
-                print("[MCP Server stderr]:", err.decode(errors="ignore"))
+            except Exception as e:
+                out, err = b"", f"Error reading process output: {e}".encode()
+            error_message = f"[MCP Server stdout]:\n{out.decode(errors='ignore')}\n[MCP Server stderr]:\n{err.decode(errors='ignore')}"
+            try:
                 process.terminate()
                 process.wait(timeout=5)
             except Exception as e:

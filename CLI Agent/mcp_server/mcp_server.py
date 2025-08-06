@@ -17,6 +17,7 @@ from tools.uninstallers.mac import uninstall_mac_tool
 from tools.uninstallers.windows import uninstall_windows_tool
 from tools.uninstallers.linux import uninstall_tool_linux
 from tools.version_checkers.mac import check_version_mac_tool
+from tools.uninstallers.linux import uninstall_linux_tool
 from tools.version_checkers.windows import check_version as check_version_windows
 from tools.version_checkers.linux import check_version as check_version_linux
 from tools.upgraders.mac import upgrade_mac_tool
@@ -86,7 +87,7 @@ def uninstall_tool(tool):
     elif os_type == "darwin":
         result = uninstall_mac_tool(tool)
     elif os_type == "linux":
-        result = uninstall_tool_linux(tool)
+        result = uninstall_linux_tool(tool)
     else:
         result = {"status": "error", "message": f"Unsupported OS: {os_type}"}
     
@@ -172,6 +173,25 @@ def handle_system_config(tool, action="check", value=None):
         return {"status": "error", "message": f"Unknown system_config action: {action}"}
 
 
+# Add this function to handle git_setup
+def handle_git_setup(action, repo_url="", branch="", username="", email="", dest_dir=""):
+    os_type = platform.system().lower()
+    if os_type == "linux":
+        try:
+            from tools.git_configurator.linux import perform_git_setup
+            return perform_git_setup(
+                action=action,
+                repo_url=repo_url,
+                branch=branch,
+                username=username,
+                email=email,
+                dest_dir=dest_dir
+            )
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+    else:
+        return {"status": "error", "message": f"Git setup is not supported on OS: {os_type}"}
+
 # Task dispatch dictionary
 task_handlers = {
     "install": install_tool,
@@ -181,6 +201,7 @@ task_handlers = {
     "upgrade": upgrade_tool,
     "version": check_version,
     "system_config": handle_system_config,
+    "git_setup": handle_git_setup,
 }
 
 @app.post("/mcp/")
@@ -193,24 +214,31 @@ async def mcp_endpoint(request: Request):
         params = req.get("params", {})
         id_ = req.get("id")
 
+        logger.info(f"Method: {method}, Params: {params}")
+
         result = None
         if method == "tool_action_wrapper":
             task = params.get("task")
             tool = params.get("tool_name")
             version = params.get("version", "latest")
 
-            handler = task_handlers.get(task)
+            handler = task_handlers.get(task.lower() if task else None)  # Use lower() for robustness
+
             if handler:
-                # uninstall_tool expects only tool param, others also get version
-                if task == "system_config":
+                if task.lower() == "git_setup":
+                    action = params.get("action")
+                    repo_url = params.get("repo_url", "")
+                    branch = params.get("branch", "")
+                    username = params.get("username", "")
+                    email = params.get("email", "")
+                    dest_dir = params.get("dest_dir", "")
+                    result = handler(action, repo_url, branch, username, email, dest_dir)
+                elif task == "system_config":
                     action = params.get("action", "check")
                     value = params.get("value", None)
                     result = handler(tool, action, value)
                 elif task == "uninstall":
                     result = handler(tool)
-                elif method == "generate_code":
-                    description = params.get("description")
-                    result = generate_code(description)
                 else:
                     result = handler(tool, version)
             else:

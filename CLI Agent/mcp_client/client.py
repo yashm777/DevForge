@@ -16,7 +16,7 @@ class HTTPMCPClient:
             "params": params
         }
         try:
-            response = requests.post(self.mcp_url, json=payload, timeout=30)
+            response = requests.post(self.mcp_url, json=payload, timeout=100)
             if response.status_code == 200:
                 return response.json()
             else:
@@ -68,3 +68,33 @@ class HTTPMCPClient:
             if value:
                 params["value"] = value
             return self._make_request("tool_action_wrapper", params)
+    
+    def git_setup(self, action: str, repo_url: str = "", branch: str = "", username: str = "", email: str = "", dest_dir: str = ""):
+        """
+        Perform git-related actions via the MCP server.
+
+        Supported actions:
+          - 'clone': Clone a repository via SSH (only SSH links supported)
+          - 'switch_branch': Switch to or create a branch in a local repository
+          - 'generate_ssh_key': Generate a new SSH key (does not add to GitHub)
+          - 'add_ssh_key': Add SSH public key to GitHub via API (if PAT provided) or return manual steps
+          - 'check_ssh_key_auth': Check if SSH key is authorized with GitHub
+
+        Parameters:
+          action: The git action to perform (see above)
+          repo_url: Repository URL (required for 'clone')
+          branch: Branch name (optional, for 'clone' and 'switch_branch')
+          username: GitHub username (optional, for 'switch_branch')
+          email: Email address (required for 'generate_ssh_key', 'add_ssh_key', 'switch_branch')
+          dest_dir: Destination directory (optional, for 'clone' and 'switch_branch')
+        """
+        params = {
+            "task": "git_setup",
+            "action": action,
+            "repo_url": repo_url,
+            "branch": branch,
+            "username": username,
+            "email": email,
+            "dest_dir": dest_dir
+        }
+        return self._make_request("tool_action_wrapper", params)

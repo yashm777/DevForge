@@ -1,203 +1,143 @@
 import subprocess
-import logging
 import shutil
-import os
-
+import logging
+from tools.utils.name_resolver import resolve_tool_name
 from tools.utils.os_utils import (
-    get_os_type,
     get_linux_distro,
     get_available_package_manager,
     is_sudo_available,
     is_snap_available,
-    get_related_packages,
 )
-from tools.utils.name_resolver import resolve_tool_name
 
 logger = logging.getLogger(__name__)
 
+def is_package_installed(pkg_name: str, pkg_manager: str) -> bool:
+    try:
+        if pkg_manager == "apt":
+            result = subprocess.run(
+                ["dpkg-query", "-W", "-f=${Status}", pkg_name],
+                capture_output=True, text=True
+            )
+            return "install ok installed" in result.stdout
+        elif pkg_manager == "dnf":
+            result = subprocess.run(
+                ["dnf", "list", "installed", pkg_name],
+                capture_output=True, text=True
+            )
+            return pkg_name in result.stdout
+        return True  # fallback
+    except Exception as e:
+        logger.warning(f"Failed to check if {pkg_name} is installed: {e}")
+        return False
 
 def run_uninstall_cmd(tool_name: str, manager: str) -> bool:
     try:
-        cmd_map = {
-            "apt": ["sudo", "apt-get", "purge", "-y", tool_name],
-            "dnf": ["sudo", "dnf", "remove", "-y", tool_name],
-            "pacman": ["sudo", "pacman", "-R", "--noconfirm", tool_name],
-            "apk": ["sudo", "apk", "del", tool_name],
-        }
-        cmd = cmd_map.get(manager)
-        if not cmd:
-            logger.error(f"Unsupported package manager: {manager}")
+        if manager == "apt":
+            cmd = ["apt-get", "purge", "-y", tool_name]
+        elif manager == "dnf":
+            cmd = ["dnf", "remove", "-y", tool_name]
+        elif manager == "snap" and is_snap_available():
+            cmd = ["snap", "remove", tool_name]
+        else:
+            logger.warning(f"Unsupported or unavailable package manager: {manager}")
             return False
 
-        logger.info(f"Running uninstall command: {' '.join(cmd)}")
+        if is_sudo_available():
+            cmd.insert(0, "sudo")
+
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode == 0:
+            logger.info(f"{tool_name} uninstalled successfully.")
             return True
         else:
-            logger.warning(f"Uninstall failed: {result.stderr.strip()}")
+            logger.error(f"Failed to uninstall {tool_name}: {result.stderr.strip() or result.stdout.strip()}")
             return False
-
     except Exception as e:
-        logger.error(f"Exception during uninstall: {e}")
+        logger.exception(f"Exception during uninstall: {e}")
         return False
 
-
-def uninstall_with_snap(tool_name: str) -> bool:
-    try:
-        if not is_snap_available():
-            return False
-
-        result = subprocess.run(["snap", "list"], capture_output=True, text=True)
-        if tool_name not in result.stdout:
-            return False
-
-        cmd = ["sudo", "snap", "remove", tool_name]
-        logger.info(f"Trying snap uninstall: {' '.join(cmd)}")
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        return result.returncode == 0
-    except Exception as e:
-        logger.error(f"Snap uninstall failed: {e}")
-        return False
-
-
-def clean_java_jvm_dirs() -> list:
-    removed = []
-    jvm_path = "/usr/lib/jvm"
-    if os.path.exists(jvm_path):
-        for entry in os.listdir(jvm_path):
-            full_path = os.path.join(jvm_path, entry)
-            if any(k in entry.lower() for k in ("jdk", "jre", "java")):
-                try:
-                    subprocess.run(["sudo", "rm", "-rf", full_path])
-                    removed.append(full_path)
-                    logger.info(f"Removed JVM directory: {full_path}")
-                except Exception as e:
-                    logger.warning(f"Failed to remove JVM dir {full_path}: {e}")
-    return removed
-
-
-def clean_java_symlinks():
-    java_bin = shutil.which("java")
-    if java_bin:
-        try:
-            subprocess.run(["sudo", "rm", "-f", java_bin])
-            logger.info(f"Removed java symlink at {java_bin}")
-        except Exception as e:
-            logger.warning(f"Failed to remove java symlink: {e}")
-
-
-def detect_installed_java_packages() -> list:
+def get_related_packages(alternatives: list[str]) -> list[str]:
     """
-    Detect installed Java-related packages on Debian/Ubuntu using dpkg-query.
-    Returns a list of package names.
+    Given a list of java binary paths from alternatives,
+    extract related package names like openjdk-17-jdk.
+    """
+    packages = set()
+    for alt in alternatives:
+        parts = alt.split("/")
+        for p in parts:
+            if "jdk" in p or "java" in p:
+                packages.add(p)
+    return list(packages)
+
+def get_java_alternatives() -> list[str]:
+    """
+    Detect installed Java versions using `update-alternatives`.
+    Returns a list of Java binary paths or identifiers.
     """
     try:
         result = subprocess.run(
-            ["dpkg-query", "-W", "-f=${binary:Package}\n"],
-            capture_output=True, text=True, check=True
+            ["update-alternatives", "--list", "java"],
+            capture_output=True, text=True
         )
-        installed = [line.strip() for line in result.stdout.splitlines()]
-        java_pkgs = [pkg for pkg in installed if "openjdk" in pkg or "default-jdk" in pkg or "oracle-java" in pkg]
-        logger.info(f"Detected installed Java packages: {java_pkgs}")
-        return java_pkgs
-    except Exception as e:
-        logger.warning(f"Failed to detect installed Java packages: {e}")
-        return []
+        if result.returncode == 0:
+            return [line.strip() for line in result.stdout.splitlines()]
+    except Exception:
+        pass
+    return []
 
 
-def uninstall_tool_linux(raw_tool: str, version: str = "latest") -> dict:
-    if not is_sudo_available():
-        return {"status": "error", "message": "Sudo required. Please run `sudo -v`."}
+def uninstall_linux_tool(tool: str, version: str | None = None):
+    success, failed = [], []
 
+    distro = get_linux_distro()
     pkg_manager = get_available_package_manager()
-    if pkg_manager == "unknown":
+
+    if not pkg_manager:
         return {"status": "error", "message": "No supported package manager found."}
 
-    resolved = resolve_tool_name(raw_tool, "linux", version, context="install")
-    resolved_name = resolved.get("name", raw_tool)
+    resolved = resolve_tool_name(tool, "linux", context="uninstall", version=version)
+    pkg_name = resolved["name"]
+    logger.info(f"Resolved uninstall package: {pkg_name}")
 
-    related_packages = get_related_packages(resolved_name, pkg_manager)
-    logger.info(f"Detected related packages for '{raw_tool}': {related_packages}")
+    if pkg_name in ["openjdk", "default-jdk", "jdk", "java", "openjdk-17-jdk", "openjdk-21-jdk"]:
+        alternatives = get_java_alternatives()
+        packages = get_related_packages(alternatives)
 
-    # Enhanced Java package detection: find both JDK and JRE packages installed
-    if raw_tool.lower() == "java":
-        # Additional JRE packages to detect and remove
-        jre_packages = []
-        try:
-            if pkg_manager == "apt":
-                # Query installed jre packages matching patterns
-                dpkg_query_cmd = [
-                    "dpkg-query", "-W", "-f=${Package}\n",
-                    "openjdk-*-jre", "default-jre*"
-                ]
-                result = subprocess.run(dpkg_query_cmd, capture_output=True, text=True)
-                if result.returncode == 0:
-                    jre_packages = [pkg for pkg in result.stdout.splitlines() if pkg.strip()]
-                    logger.info(f"Detected installed JRE packages: {jre_packages}")
-            # You can add support for other package managers here if needed
-        except Exception as e:
-            logger.warning(f"Failed to query JRE packages: {e}")
-
-        # Combine JDK and JRE packages for uninstall
-        combined_packages = set(related_packages) | set(jre_packages)
-        success = []
-        failed = []
+        if version:
+            version_filtered = [pkg for pkg in packages if version.replace(" ", "") in pkg.replace("-", "")]
+            combined_packages = list(set(version_filtered + [pkg_name]))
+        else:
+            combined_packages = list(set(packages + [pkg_name]))
 
         for pkg in combined_packages:
-            if run_uninstall_cmd(pkg, pkg_manager):
-                success.append(pkg)
+            if is_package_installed(pkg, pkg_manager):
+                if run_uninstall_cmd(pkg, pkg_manager):
+                    success.append(pkg)
+                else:
+                    failed.append(pkg)
             else:
-                failed.append(pkg)
-
-        removed_paths = clean_java_jvm_dirs()
-        clean_java_symlinks()
-
-        extra_hint = (
-            "\nNote: For complete removal, check if any Java versions remain with "
-            "`dpkg --list | grep openjdk` and remove manually if needed."
-        )
-
-        return {
-            "status": "success" if success else "error",
-            "message": (
-                f"Removed Java components: {success}. JVM dirs cleaned: {removed_paths}."
-                + (extra_hint if success else "")
-            ),
-            "removed_dirs": removed_paths,
-            "uninstalled_packages": success,
-            "failed_packages": failed
-        }
-
-    # Non-Java uninstall logic unchanged
-    success = []
-    failed = []
-
-    if related_packages:
-        for pkg in related_packages:
-            if run_uninstall_cmd(pkg, pkg_manager):
-                success.append(pkg)
-            else:
-                failed.append(pkg)
+                logger.info(f"{pkg} is not installed. Skipping.")
     else:
-        # No related packages detected, try directly
-        if run_uninstall_cmd(resolved_name, pkg_manager):
-            success.append(resolved_name)
-        elif uninstall_with_snap(resolved_name):
-            success.append(resolved_name)
+        related_packages = [pkg_name]
+        if is_package_installed(pkg_name, pkg_manager):
+            for pkg in related_packages:
+                if run_uninstall_cmd(pkg, pkg_manager):
+                    success.append(pkg)
+                else:
+                    failed.append(pkg)
         else:
-            failed.append(resolved_name)
+            logger.info(f"{pkg_name} is not installed. Skipping.")
+            failed.append(pkg_name)
 
-    if success:
+    if failed:
+        return {
+            "status": "partial" if success else "error",
+            "message": f"Uninstall finished. Success: {success}. Failed: {failed}"
+        }
+    else:
         return {
             "status": "success",
-            "message": f"Uninstalled: {', '.join(success)}",
-            "uninstalled_packages": success,
-            "failed_packages": failed
+            "message": f"Uninstalled: {success}" if success else f"Nothing to uninstall. Packages not found."
         }
-    else:
-        return {
-            "status": "error",
-            "message": f"Failed to uninstall any packages for '{raw_tool}'",
-            "failed_packages": failed
-        }
-
+        
+    

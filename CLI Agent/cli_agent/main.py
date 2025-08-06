@@ -113,8 +113,24 @@ def format_result(result: Dict[str, Any], is_mac_java_check: bool = False) -> st
                 for k, v in inner_result.items():
                     table.add_row(f"[bold]{k}[/bold]", str(v))
                 return table
+            # --- Updated error extraction logic ---
             if "message" in inner_result:
                 return inner_result["message"]
+            elif "details" in inner_result and isinstance(inner_result["details"], dict):
+                details = inner_result["details"]
+                if "message" in details:
+                    return details["message"]
+                elif "status" in details:
+                    status = details["status"]
+                    message = details.get("message", "")
+                    if status == "success":
+                        return f"✓ {message}" if message else "✓ Operation completed successfully"
+                    elif status == "error":
+                        return f"✗ {message}" if message else "✗ Operation failed"
+                    else:
+                        return message
+                else:
+                    return str(details)
             elif "status" in inner_result:
                 status = inner_result["status"]
                 message = inner_result.get("message", "")
@@ -158,13 +174,13 @@ def setup_instances():
         mcp_client = HTTPMCPClient()
     return True
 
+
 @app.command()
 def run(
     command: str = typer.Argument(..., help="Your request in natural language, e.g. 'get me docker', 'remove node', 'what's the python version?', 'set up a dev environment for react'"),
     output_file: str = typer.Option(None, "--output", "-o", help="Output file path for code generation (optional)"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose output")
 ):
-    """Run any dev environment or tool management request in natural language."""
     if not setup_instances():
         return
 
@@ -385,6 +401,7 @@ def run(
                                 else:
                                     # Default behavior for non-Mac or non-Java installs
                                     console.print(Panel(formatted_result, title=f"Step {i}: Install {display_name}", border_style="green"))
+
                             else:
                                 console.print("[red]Invalid selection. Aborting.[/red]")
                         except (ValueError, KeyboardInterrupt):
@@ -475,6 +492,7 @@ def run(
                     else:
                         # Default behavior for non-Mac or non-Java installs
                         console.print(Panel(formatted_result, title=f"Step {i}: Install {display_name}", border_style="green"))
+
                 continue
 
             # Code generation case
@@ -578,6 +596,7 @@ def run(
                 # Default behavior for non-Mac or non-Java operations
                 console.print(Panel(formatted_result, title=f"Step {i}: {method}", border_style="green"))
 
+
     except Exception as e:
         console.print(f"[red]Error executing command: {str(e)}[/red]")
 
@@ -656,3 +675,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
