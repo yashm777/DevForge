@@ -189,7 +189,7 @@ def handle_system_config(tool, action="check", value=None):
 
 
 # Add this function to handle git_setup
-def handle_git_setup(action, repo_url="", branch="", username="", email="", dest_dir=""):
+def handle_git_setup(action, repo_url="", branch="", username="", email="", dest_dir="", pat=""):
     os_type = platform.system().lower()
     if os_type == "linux":
         try:
@@ -200,7 +200,8 @@ def handle_git_setup(action, repo_url="", branch="", username="", email="", dest
                 branch=branch,
                 username=username,
                 email=email,
-                dest_dir=dest_dir
+                dest_dir=dest_dir,
+                pat=pat  # <-- Add this line
             )
         except Exception as e:
             return {"status": "error", "message": str(e)}
@@ -261,7 +262,8 @@ async def mcp_endpoint(request: Request):
                     username = params.get("username", "")
                     email = params.get("email", "")
                     dest_dir = params.get("dest_dir", "")
-                    result = handler(action, repo_url, branch, username, email, dest_dir)
+                    pat = params.get("pat", "")
+                    result = handler(action, repo_url, branch, username, email, dest_dir, pat)
                 else:
                     tool = params.get("tool_name")
                     version = params.get("version", "latest")
