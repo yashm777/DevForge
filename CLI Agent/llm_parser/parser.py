@@ -103,13 +103,8 @@ def build_prompt(user_input: str) -> str:
   - "python 3.9" → "python3.9"
 - If version is not specified or is "latest", use the default package name.
 - If the package is not available via standard package managers and appears to be a known tool, provide a field called "manual_url" with the official website for manual installation.
-For system configuration tasks, always include:
-- action: [check, set, append_to_path, remove_from_path, remove_env, list_env, is_port_open, is_service_running]
-- tool_name: the variable, path, or service name
-- value: only for set
-Do NOT include "version" for system_config tasks.
-- If multiple actions are requested, return them as a JSON array.
-- Return only JSON, no extra explanations, markdown, or code fences.
+- Return only a single valid JSON object with keys "method" and "params".
+- Do NOT include any explanations, aliases, markdown, or code blocks in the response.
 """
 
     return (
@@ -118,17 +113,15 @@ Do NOT include "version" for system_config tasks.
         "IMPORTANT: For install, uninstall, update, and version actions, use method 'tool_action_wrapper' "
         "with params containing 'task' and 'tool_name'.\n"
         "For system info, use method 'info://server' with empty params.\n"
-        "For code generation, use method 'generate_code' with 'description' param.\n"
-        "For git actions (clone, switch_branch, generate_ssh_key, add_ssh_key, check_ssh_key_auth), always use method 'tool_action_wrapper' with params:\n"
-        "    - 'task': 'git_setup'\n"
-        "    - 'action': 'clone', 'switch_branch', 'generate_ssh_key', 'add_ssh_key', or 'check_ssh_key_auth'\n"
-        "    - plus the required parameters for each action.\n\n"
+        "For code generation, use method 'generate_code' with 'description' param.\n\n"
         "Examples:\n"
         "- Install: {'method': 'tool_action_wrapper', 'params': {'task': 'install', 'tool_name': 'docker'}}\n"
         "- Version check: {'method': 'tool_action_wrapper', 'params': {'task': 'version', 'tool_name': 'python'}}\n"
         "- System info: {'method': 'info://server', 'params': {}}\n"
-        "- Generate code: {'method': 'generate_code', 'params': {'description': 'hello world function'}}\n\n"
-        "- System config: {'method': 'tool_action_wrapper', 'params': {'task': 'system_config', 'action': 'check', 'tool_name': 'JAVA_HOME'}}\n\n"
+        "- Generate code: {'method': 'generate_code', 'params': {'description': 'hello world function'}}\n"
+        "- System config: {'method': 'tool_action_wrapper', 'params': {'task': 'system_config', 'action': 'check', 'tool_name': 'JAVA_HOME'}}\n"
+        "- Git setup (clone): {'method': 'tool_action_wrapper', 'params': {'task': 'git_setup', 'action': 'clone', 'repo_url': 'git@github.com:user/repo.git', 'dest_dir': '/path/to/dir'}}\n"
+        "- Git setup (generate SSH key): {'method': 'tool_action_wrapper', 'params': {'task': 'git_setup', 'action': 'generate_ssh_key', 'email': 'user@example.com'}}\n"
         f"{additional_guidance}\n\n"
         "Given the user's instruction, identify the correct tool(s) and return a JSON object if only one action is required, or a JSON array if multiple actions are needed.\n"
         "DO NOT return multiple objects separated by commas. DO NOT include extra text, explanations, markdown, or comments. ONLY return valid JSON.\n\n"
@@ -276,10 +269,13 @@ def build_prompt(user_input: str) -> str:
         "For system info, use method 'info://server' with empty params.\n"
         "For code generation, use method 'generate_code' with 'description' param.\n\n"
         "Examples:\n"
-        "- Install: {'method': 'tool_action_wrapper', 'params': {'task': 'install', 'tool_name': 'docker', 'user_request': 'docker'}}\n"
-        "- Version check: {'method': 'tool_action_wrapper', 'params': {'task': 'version', 'tool_name': 'python3', 'user_request': 'python'}}\n"
+        "- Install: {'method': 'tool_action_wrapper', 'params': {'task': 'install', 'tool_name': 'docker'}}\n"
+        "- Version check: {'method': 'tool_action_wrapper', 'params': {'task': 'version', 'tool_name': 'python'}}\n"
         "- System info: {'method': 'info://server', 'params': {}}\n"
-        "- Generate code: {'method': 'generate_code', 'params': {'description': 'hello world function'}}\n\n"
+        "- Generate code: {'method': 'generate_code', 'params': {'description': 'hello world function'}}\n"
+        "- System config: {'method': 'tool_action_wrapper', 'params': {'task': 'system_config', 'action': 'check', 'tool_name': 'JAVA_HOME'}}\n"
+        "- Git setup (clone): {'method': 'tool_action_wrapper', 'params': {'task': 'git_setup', 'action': 'clone', 'repo_url': 'git@github.com:user/repo.git', 'dest_dir': '/path/to/dir'}}\n"
+        "- Git setup (generate SSH key): {'method': 'tool_action_wrapper', 'params': {'task': 'git_setup', 'action': 'generate_ssh_key', 'email': 'user@example.com'}}\n"
         f"{additional_guidance}\n\n"
         "Given the user's instruction, identify the correct tool(s) and return a JSON object if only one action is required, or a JSON array if multiple actions are needed.\n"
         "DO NOT return multiple objects separated by commas. DO NOT include extra text, explanations, markdown, or comments. ONLY return valid JSON.\n\n"
@@ -361,7 +357,7 @@ def generate_smart_tool_url(tool_name: str) -> str:
             f"You are helping a developer locate the most appropriate and official website or trusted source to download or learn more about a tool called '{tool_name}'."
 "If the tool is well-known (e.g., Java, Docker, IntelliJ), return the best URL — preferably the official website, trusted package repository (like apt, brew, snap), or GitHub page."
 "If the tool is less known, research and return the most relevant and safe-looking link. You may include the GitHub repo, docs, or publisher's page — whichever looks best."
-"If the tool name is very unclear, gibberish, or seems unrelated to software (e.g., 'carrot3000'), respond with a short note saying it doesn’t appear to be a recognized tool."
+"If the tool name is very unclear, gibberish, or seems unrelated to software (e.g., 'carrot3000'), respond with a short note saying it doesn't appear to be a recognized tool."
 "Return only the single most appropriate URL or response."
         )
 
