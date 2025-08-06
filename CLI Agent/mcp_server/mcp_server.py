@@ -23,6 +23,7 @@ from tools.version_checkers.linux import check_version as check_version_linux
 from tools.upgraders.mac import upgrade_mac_tool
 from tools.upgraders.windows import handle_tool
 from tools.upgraders.linux import handle_tool
+from tools.installers.vscode_extension import install_extension as install_vscode_extension_tool, uninstall_extension as uninstall_vscode_extension_tool
 import traceback
 
 # Configure logging
@@ -92,6 +93,20 @@ def uninstall_tool(tool):
         result = {"status": "error", "message": f"Unsupported OS: {os_type}"}
     
     add_log_entry("INFO", f"Uninstall result for {tool}: {result.get('status', 'unknown')}")
+    return result
+
+def install_vscode_extension(extension_id):
+    """Install a VSCode extension."""
+    add_log_entry("INFO", f"VSCode extension install request for: {extension_id}")
+    result = install_vscode_extension_tool(extension_id)
+    add_log_entry("INFO", f"VSCode extension install result for {extension_id}: {result.get('status', 'unknown')}")
+    return result
+
+def uninstall_vscode_extension(extension_id):
+    """Uninstall a VSCode extension."""
+    add_log_entry("INFO", f"VSCode extension uninstall request for: {extension_id}")
+    result = uninstall_vscode_extension_tool(extension_id)
+    add_log_entry("INFO", f"VSCode extension uninstall result for {extension_id}: {result.get('status', 'unknown')}")
     return result
 
 def check_version(tool, version="latest"):
@@ -201,7 +216,10 @@ task_handlers = {
     "upgrade": upgrade_tool,
     "version": check_version,
     "system_config": handle_system_config,
+    "install_vscode_extension": install_vscode_extension,
+    "uninstall_vscode_extension": uninstall_vscode_extension,
     "git_setup": handle_git_setup,
+
 }
 
 @app.post("/mcp/")
