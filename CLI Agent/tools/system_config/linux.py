@@ -91,3 +91,4 @@ def is_service_running(service_name):
             return {"status": "not_running", "service": service_name}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+

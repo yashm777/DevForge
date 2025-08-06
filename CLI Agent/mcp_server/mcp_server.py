@@ -15,11 +15,12 @@ from tools.installers.windows import install_windows_tool, install_windows_tool_
 from tools.installers.linux import install_linux_tool
 from tools.uninstallers.mac import uninstall_mac_tool
 from tools.uninstallers.windows import uninstall_windows_tool
+from tools.uninstallers.linux import uninstall_tool_linux
+from tools.version_checkers.mac import check_version_mac_tool
 from tools.uninstallers.linux import uninstall_linux_tool
-from tools.version_checkers.mac import check_version as check_version_mac
 from tools.version_checkers.windows import check_version as check_version_windows
 from tools.version_checkers.linux import check_version as check_version_linux
-from tools.upgraders.mac import handle_tool_mac
+from tools.upgraders.mac import upgrade_mac_tool
 from tools.upgraders.windows import handle_tool
 from tools.upgraders.linux import handle_tool
 import traceback
@@ -99,7 +100,7 @@ def check_version(tool, version="latest"):
     if os_type == "windows":
         result = check_version_windows(tool, version)
     elif os_type == "darwin":
-        result = check_version_mac(tool, version)
+        result = check_version_mac_tool(tool, version)
     elif os_type == "linux":
         result = check_version_linux(tool, version)
     else:
@@ -114,7 +115,7 @@ def upgrade_tool(tool, version="latest"):
     if os_type == "windows":
         result = handle_tool(tool, version)
     elif os_type == "darwin":
-        result = handle_tool_mac(tool, version)
+        result = upgrade_mac_tool(tool, version)
     elif os_type == "linux":
         result = handle_tool(tool, version)
     else:
@@ -170,6 +171,7 @@ def handle_system_config(tool, action="check", value=None):
         return sys_tool.list_env_variables()
     else:
         return {"status": "error", "message": f"Unknown system_config action: {action}"}
+
 
 # Add this function to handle git_setup
 def handle_git_setup(action, repo_url="", branch="", username="", email="", dest_dir=""):

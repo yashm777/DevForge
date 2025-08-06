@@ -1,176 +1,109 @@
-import shutil
-import subprocess
+"""
+Mac Tool Upgrader - Clean and Simple
+
+This module handles upgrading tools on Mac using the MacToolManager.
+"""
+
 import logging
+from tools.utils.mac_tool_manager import get_manager
+from tools.utils.name_resolver import resolve_tool_name
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def handle_tool_mac(tool_name: str, version: str = "latest") -> dict:
+def get_post_upgrade_instructions(tool_name: str, version: str) -> str:
     """
-    Update a tool on macOS using appropriate package manager.
-
+    Generate helpful post-upgrade instructions for common development tools.
+    
     Args:
-        tool_name (str): Name of the tool to update.
-        version (str): Version to update to (defaults to latest).
-
+        tool_name: Name of the upgraded tool
+        version: Version that was installed
+        
     Returns:
-        dict: Status message and update information.
+        String with helpful instructions or empty string if no specific instructions
     """
-    # Handle Python packages (pip, setuptools, wheel, etc.)
-    python_packages = ["pip", "setuptools", "wheel", "virtualenv", "pipenv"]
+    tool_base = tool_name.split('@')[0].lower()
     
-    if tool_name in python_packages:
-        return _update_python_package(tool_name, version)
+    # For Java/OpenJDK, extract major version for path
+    java_major_version = version.split('.')[0] if tool_base in ['java', 'openjdk'] else None
     
-    # Handle npm packages
-    npm_packages = ["npm", "yarn", "pnpm"]
-    if tool_name in npm_packages:
-        return _update_npm_package(tool_name, version)
+    instructions = {
+        'node': f"• Verify: `node --version` should show v{version}\n• Use: `npm install -g <package>` to install global packages\n• Consider using `nvm` for managing multiple Node.js versions",
+        'python': f"• Verify: `python3 --version` should show {version}\n• Use: `pip3 install <package>` to install packages\n• Consider using `pyenv` for managing multiple Python versions",
+        'java': f"• Verify: `java --version` should show {version}\n• Copy this export command:\nexport JAVA_HOME=/opt/homebrew/Cellar/openjdk@{java_major_version}/{version}/libexec/openjdk.jdk/Contents/Home\n• Add to ~/.zshrc:\necho 'export JAVA_HOME=/opt/homebrew/Cellar/openjdk@{java_major_version}/{version}/libexec/openjdk.jdk/Contents/Home' >> ~/.zshrc",
+        'openjdk': f"• Verify: `java --version` should show OpenJDK {version}\n• Copy this export command:\nexport JAVA_HOME=/opt/homebrew/Cellar/openjdk@{java_major_version}/{version}/libexec/openjdk.jdk/Contents/Home\n• Add to ~/.zshrc:\necho 'export JAVA_HOME=/opt/homebrew/Cellar/openjdk@{java_major_version}/{version}/libexec/openjdk.jdk/Contents/Home' >> ~/.zshrc",
+        'go': f"• Verify: `go version` should show {version}\n• Create your first project: `go mod init myproject`\n• Build projects: `go build` or `go run main.go`",
+        'docker': f"• Verify: `docker --version` should show {version}\n• Start Docker daemon if needed\n• Try: `docker run hello-world` to test installation",
+        'git': f"• Verify: `git --version` should show {version}\n• Configure: `git config --global user.name \"Your Name\"`\n• Configure: `git config --global user.email \"your@email.com\"`",
+        'rust': f"• Verify: `rustc --version` should show {version}\n• Create project: `cargo new myproject`\n• Build: `cargo build` or run: `cargo run`",
+        'kotlin': f"• Verify: `kotlin -version` should show {version}\n• Compile: `kotlinc hello.kt -include-runtime -d hello.jar`\n• Run: `java -jar hello.jar`"
+    }
     
-    # Handle Homebrew packages (default)
-    return _update_homebrew_package(tool_name, version)
+    return instructions.get(tool_base, "")
 
-def _update_python_package(tool_name: str, version: str) -> dict:
-    """Update Python packages using pip."""
+def upgrade_mac_tool(tool_name, version="latest"):
+    """
+    Upgrade a tool on Mac to the latest or specified version.
+    
+    Args:
+        tool_name: Name of the tool to upgrade
+        version: Target version (defaults to latest)
+    
+    Returns:
+        Dictionary with status, message, and details
+    """
+    logger.info(f"Starting Mac upgrade: {tool_name} to version {version}")
+    
     try:
-        # Check if pip is available
-        if shutil.which("pip") is None and shutil.which("pip3") is None:
-            return {
-                "status": "error",
-                "message": "pip not found. Please install Python first."
-            }
+        # Resolve tool name for Mac system (handles Linux package names)
+        resolved = resolve_tool_name(tool_name, "darwin", version, "install")
+        resolved_tool_name = resolved["name"]
+        logger.info(f"Resolved '{tool_name}' to '{resolved_tool_name}' for Mac upgrade")
         
-        pip_cmd = "pip3" if shutil.which("pip3") else "pip"
+        # Use the comprehensive tool manager (MacToolManager.upgrade_tool only takes tool_name)
+        manager = get_manager()
+        result = manager.upgrade_tool(resolved_tool_name)
         
-        if tool_name == "pip":
-            # Special case for pip itself
-            command = [pip_cmd, "install", "--upgrade", "pip"]
-        else:
-            command = [pip_cmd, "install", "--upgrade", tool_name]
+        # Enhance successful results with post-upgrade instructions
+        if result.get("status") == "success" and "new_version" in result:
+            instructions = get_post_upgrade_instructions(resolved_tool_name, result["new_version"])
+            if instructions:
+                result["instructions"] = instructions
+                result["message"] = f"{result['message']}\n\nNext steps:\n{instructions}"
         
-        logger.info(f"Running command: {' '.join(command)}")
-        result = subprocess.run(command, capture_output=True, text=True, check=True)
+        return result
         
+    except Exception as e:
+        logger.error(f"Upgrade failed for {tool_name}: {e}")
         return {
-            "status": "success",
-            "message": f"{tool_name} updated successfully via pip",
-            "details": result.stdout.strip(),
-            "type": "python_package"
+            "status": "error",
+            "message": f"Upgrade failed: {str(e)}",
+            "details": {"tool_name": tool_name, "error": str(e)}
         }
+
+def downgrade_mac_tool(tool_name, target_version=None):
+    """
+    Downgrade a development tool on Mac (currently same as upgrade).
     
-    except subprocess.CalledProcessError as e:
-        logger.error(f"pip update failed: {e.stderr.strip()}")
-        return {
-            "status": "error",
-            "message": f"Failed to update {tool_name} via pip",
-            "details": e.stderr.strip() if e.stderr else "No additional error details."
-        }
-    except Exception as e:
-        logger.error(f"Unexpected error during pip update: {e}")
-        return {
-            "status": "error",
-            "message": f"Unexpected error during pip update: {str(e)}"
-        }
-
-def _update_npm_package(tool_name: str, version: str) -> dict:
-    """Update npm packages using npm."""
-    try:
-        if shutil.which("npm") is None:
-            return {
-                "status": "error",
-                "message": "npm not found. Please install Node.js first."
-            }
-        
-        if tool_name == "npm":
-            command = ["npm", "install", "-g", "npm@latest"]
-        else:
-            command = ["npm", "install", "-g", f"{tool_name}@latest"]
-        
-        logger.info(f"Running command: {' '.join(command)}")
-        result = subprocess.run(command, capture_output=True, text=True, check=True)
-        
-        return {
-            "status": "success",
-            "message": f"{tool_name} updated successfully via npm",
-            "details": result.stdout.strip(),
-            "type": "npm_package"
-        }
+    Args:
+        tool_name: The name of the tool to downgrade
+        target_version: Optional specific version to downgrade to
     
-    except subprocess.CalledProcessError as e:
-        logger.error(f"npm update failed: {e.stderr.strip()}")
-        return {
-            "status": "error",
-            "message": f"Failed to update {tool_name} via npm",
-            "details": e.stderr.strip() if e.stderr else "No additional error details."
-        }
-    except Exception as e:
-        logger.error(f"Unexpected error during npm update: {e}")
-        return {
-            "status": "error",
-            "message": f"Unexpected error during npm update: {str(e)}"
-        }
+    Returns:
+        Dictionary with status, message, and details
+    """
+    logger.info(f"Starting downgrade process for tool: {tool_name}")
+    
+    # For now, this uses the same logic as upgrade but with different messaging
+    result = upgrade_mac_tool(tool_name)
+    
+    # Update the messaging for downgrade context
+    if result.get("status") == "success":
+        result["message"] = result["message"].replace("upgraded", "switched to")
+    
+    return result
 
-def _update_homebrew_package(tool_name: str, version: str) -> dict:
-    """Update packages using Homebrew."""
-    if shutil.which("brew") is None:
-        logger.error("Homebrew not found. Cannot update.")
-        return {
-            "status": "error",
-            "message": "Homebrew not found. Please install Homebrew first."
-        }
-
-    try:
-        # First, update Homebrew itself
-        logger.info("Updating Homebrew...")
-        subprocess.run(["brew", "update"], capture_output=True, text=True, check=True)
-
-        # Check if the tool is installed
-        if tool_name == "all":
-            # Update all packages
-            logger.info("Updating all Homebrew packages...")
-            result = subprocess.run(["brew", "upgrade"], capture_output=True, text=True, check=True)
-            
-            return {
-                "status": "success",
-                "message": "All Homebrew packages updated successfully",
-                "details": result.stdout.strip()
-            }
-        else:
-            # Check if it's a cask or formula
-            check_cask_cmd = ["brew", "list", "--cask", tool_name]
-            is_cask = subprocess.call(check_cask_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0
-
-            if is_cask:
-                command = ["brew", "upgrade", "--cask", tool_name]
-                logger.info(f"Updating cask: {tool_name}")
-            else:
-                command = ["brew", "upgrade", tool_name]
-                logger.info(f"Updating formula: {tool_name}")
-
-            logger.info(f"Running command: {' '.join(command)}")
-            result = subprocess.run(command, capture_output=True, text=True, check=True)
-
-            return {
-                "status": "success",
-                "message": f"{tool_name} updated successfully via Homebrew",
-                "details": result.stdout.strip(),
-                "type": "cask" if is_cask else "formula"
-            }
-
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Update failed: {e.stderr.strip()}")
-        return {
-            "status": "error",
-            "message": f"Failed to update {tool_name} via Homebrew",
-            "details": e.stderr.strip() if e.stderr else "No additional error details."
-        }
-    except Exception as e:
-        logger.error(f"Unexpected error during update: {e}")
-        return {
-            "status": "error",
-            "message": f"Unexpected error during update: {str(e)}"
-        }
-
-# Legacy function for backward compatibility
-def update_tool_mac(tool_name: str, version: str = "latest") -> dict:
-    return handle_tool_mac(tool_name, version)
+# Legacy function aliases for backwards compatibility
+def handle_tool(tool_name, version="latest"):
+    """Legacy function name - use upgrade_mac_tool instead."""
+    return upgrade_mac_tool(tool_name, version)
