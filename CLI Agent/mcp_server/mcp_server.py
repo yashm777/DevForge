@@ -13,6 +13,7 @@ from tools.code_generator import generate_code
 from tools.installers.mac import install_mac_tool
 from tools.installers.windows import install_windows_tool, install_windows_tool_by_id
 from tools.installers.linux import install_linux_tool
+from tools.installers.vscode_extension import install_extension as install_vscode_extension_tool, uninstall_extension as uninstall_vscode_extension_tool
 from tools.uninstallers.mac import uninstall_mac_tool
 from tools.uninstallers.windows import uninstall_windows_tool
 from tools.uninstallers.linux import uninstall_tool_linux
@@ -91,6 +92,20 @@ def uninstall_tool(tool):
         result = {"status": "error", "message": f"Unsupported OS: {os_type}"}
     
     add_log_entry("INFO", f"Uninstall result for {tool}: {result.get('status', 'unknown')}")
+    return result
+
+def install_vscode_extension(extension_id):
+    """Install a VSCode extension."""
+    add_log_entry("INFO", f"VSCode extension install request for: {extension_id}")
+    result = install_vscode_extension_tool(extension_id)
+    add_log_entry("INFO", f"VSCode extension install result for {extension_id}: {result.get('status', 'unknown')}")
+    return result
+
+def uninstall_vscode_extension(extension_id):
+    """Uninstall a VSCode extension."""
+    add_log_entry("INFO", f"VSCode extension uninstall request for: {extension_id}")
+    result = uninstall_vscode_extension_tool(extension_id)
+    add_log_entry("INFO", f"VSCode extension uninstall result for {extension_id}: {result.get('status', 'unknown')}")
     return result
 
 def check_version(tool, version="latest"):
@@ -181,6 +196,8 @@ task_handlers = {
     "upgrade": upgrade_tool,
     "version": check_version,
     "system_config": handle_system_config,
+    "install_vscode_extension": install_vscode_extension,
+    "uninstall_vscode_extension": uninstall_vscode_extension,
 }
 
 @app.post("/mcp/")
@@ -198,20 +215,26 @@ async def mcp_endpoint(request: Request):
         result = None
         if method == "tool_action_wrapper":
             task = params.get("task")
-            tool = params.get("tool_name")
-            version = params.get("version", "latest")
-
             handler = task_handlers.get(task)
             
             if handler:
-                # uninstall_tool expects only tool param, others also get version
                 if task == "system_config":
+                    tool = params.get("tool_name")
                     action = params.get("action", "check")
                     value = params.get("value", None)
                     result = handler(tool, action, value)
                 elif task == "uninstall":
+                    tool = params.get("tool_name")
                     result = handler(tool)
+                elif task == "install_vscode_extension":
+                    extension_id = params.get("extension_id") or params.get("tool_name")
+                    result = handler(extension_id)
+                elif task == "uninstall_vscode_extension":
+                    extension_id = params.get("extension_id") or params.get("tool_name")
+                    result = handler(extension_id)
                 else:
+                    tool = params.get("tool_name")
+                    version = params.get("version", "latest")
                     result = handler(tool, version)
             else:
                 result = {"status": "error", "message": f"Unknown task: {task}"}
@@ -226,6 +249,14 @@ async def mcp_endpoint(request: Request):
         elif method == "get_logs":
             lines = params.get("lines", 50)
             result = {"logs": get_server_logs(lines)}
+            
+        elif method == "install_vscode_extension":
+            extension_id = params.get("extension_id") or params.get("tool_name")
+            result = install_vscode_extension(extension_id)
+            
+        elif method == "uninstall_vscode_extension":
+            extension_id = params.get("extension_id") or params.get("tool_name")
+            result = uninstall_vscode_extension(extension_id)
 
         else:
             result = {"status": "error", "message": f"Unknown method: {method}"}
