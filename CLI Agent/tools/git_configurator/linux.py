@@ -50,8 +50,7 @@ def configure_git_credentials(username: str, email: str):
 def generate_ssh_key(email: str, key_path: str = "~/.ssh/id_rsa"):
     """
     Generate a new SSH key if it doesn't already exist.
-    After generation, offer to add the public key to GitHub via API if PAT is provided,
-    otherwise instruct the user to add it manually, then confirm and verify the key.
+    Only generates the key, does not add it to GitHub.
     """
     if not email or "@" not in email:
         raise ValueError("A valid email address is required to generate an SSH key.")
@@ -74,13 +73,20 @@ def generate_ssh_key(email: str, key_path: str = "~/.ssh/id_rsa"):
         pubkey = pubkey_file.read()
     logging.info("\nYour new SSH public key:\n")
     print(pubkey)
+    return f"SSH key generated at {key_path}"
 
-    # Ask if user has a GitHub PAT
-    print("\nDo you have a GitHub Personal Access Token (PAT) with 'admin:public_key' scope?")
-    pat = input("If yes, paste it here (leave blank if not): ").strip()
 
+def add_ssh_key_to_github_or_manual(email: str, pat: str = None, key_path: str = "~/.ssh/id_rsa"):
+    """
+    Add SSH public key to GitHub using the API and a Personal Access Token (PAT).
+    If PAT is not provided, return manual steps to add the key.
+    """
+    pub_key_path = os.path.expanduser(key_path) + ".pub"
+    if not os.path.exists(pub_key_path):
+        return {"status": "error", "message": "SSH public key not found. Please generate it first."}
+    with open(pub_key_path, "r") as pubkey_file:
+        pubkey = pubkey_file.read()
     if pat:
-        # Try to add the key via GitHub API
         api_url = "https://api.github.com/user/keys"
         headers = {
             "Authorization": f"token {pat}",
@@ -92,37 +98,26 @@ def generate_ssh_key(email: str, key_path: str = "~/.ssh/id_rsa"):
         }
         response = requests.post(api_url, headers=headers, json=data)
         if response.status_code == 201:
-            print("✅ SSH key added to your GitHub account via API.")
+            return {"status": "success", "message": "✅ SSH key added to your GitHub account via API."}
         else:
-            print(f"❌ Failed to add SSH key via API: {response.text}")
-            print("Please add the key manually as described below.")
-            pat = ""  # fallback to manual
-    if not pat:
-        print("\nManual steps to add your SSH key to GitHub:")
-        print("1. Copy the above public key.")
-        print("2. Go to https://github.com/settings/ssh/new")
-        print("3. Paste the key and save.")
-        input("\nPress Enter after you have added the SSH key to your GitHub account...")
-
-    # Verify SSH connection to GitHub
-    try:
-        logging.info("Verifying SSH key connection to GitHub...")
-        result = subprocess.run(
-            ["ssh", "-T", "git@github.com"],
-            capture_output=True, text=True, check=True
+            manual_msg = (
+                f"❌ Failed to add SSH key via API: {response.text}\n"
+                "Manual steps to add your SSH key to GitHub:\n"
+                "1. Copy the public key below:\n"
+                f"{pubkey}\n"
+                "2. Go to https://github.com/settings/ssh/new\n"
+                "3. Paste the key and save."
+            )
+            return {"status": "warning", "message": manual_msg}
+    else:
+        manual_msg = (
+            "Manual steps to add your SSH key to GitHub:\n"
+            "1. Copy the public key below:\n"
+            f"{pubkey}\n"
+            "2. Go to https://github.com/settings/ssh/new\n"
+            "3. Paste the key and save."
         )
-        output = result.stdout.lower() + result.stderr.lower()
-        if "successfully authenticated" in output or "hi " in output:
-            logging.info("✅ SSH key is correctly configured and connected to GitHub!")
-            print("✅ SSH key is correctly configured and connected to GitHub!")
-        else:
-            logging.warning("SSH key verification output:\n%s", result.stdout.strip() or result.stderr.strip())
-            print("⚠️ SSH key verification output:\n", result.stdout.strip() or result.stderr.strip())
-    except subprocess.CalledProcessError as e:
-        logging.error("SSH key verification failed. Details:\n%s", e.stderr or e.stdout)
-        print("❌ SSH key verification failed. Details:\n", e.stderr or e.stdout)
-
-    return f"SSH key generated at {key_path}"
+        return {"status": "success", "message": manual_msg}
 
 
 def is_https_url(url: str) -> bool:
@@ -162,9 +157,17 @@ def clone_repository_ssh(repo_url: str, dest_dir: str = None, branch: str = None
     auth_result = check_ssh_key_auth()
     if auth_result["status"] != "success":
         logging.error(f"SSH authentication failed: {auth_result['message']}")
+        manual_steps = (
+            "Your SSH key is not authorized with GitHub.\n"
+            "Manual steps to add your SSH key to GitHub:\n"
+            "1. Copy your public key:\n"
+            f"{open(pub_key_path).read()}\n"
+            "2. Go to https://github.com/settings/ssh/new\n"
+            "3. Paste the key and save.\n"
+            "After adding, try cloning again."
+        )
         raise RuntimeError(
-            f"SSH key is not authorized with GitHub. {auth_result['message']} "
-            "Please add your public key to GitHub before cloning private repos."
+            f"SSH key is not authorized with GitHub. {auth_result['message']}\n{manual_steps}"
         )
 
     # Proceed with cloning
