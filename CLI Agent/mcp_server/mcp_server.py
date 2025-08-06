@@ -223,7 +223,12 @@ async def mcp_endpoint(request: Request):
             handler = task_handlers.get(task)
             
             if handler:
-                if task == "git_setup":
+                if task == "system_config":
+                    tool = params.get("tool_name")
+                    action = params.get("action", "check")
+                    value = params.get("value", None)
+                    result = handler(tool, action, value)
+                elif task == "git_setup":
                     action = params.get("action")
                     repo_url = params.get("repo_url", "")
                     branch = params.get("branch", "")
@@ -231,11 +236,6 @@ async def mcp_endpoint(request: Request):
                     email = params.get("email", "")
                     dest_dir = params.get("dest_dir", "")
                     result = handler(action, repo_url, branch, username, email, dest_dir)
-                elif task == "system_config":
-                    tool = params.get("tool_name")
-                    action = params.get("action", "check")
-                    value = params.get("value", None)
-                    result = handler(tool, action, value)
                 elif task == "uninstall":
                     result = handler(tool)
                 else:
