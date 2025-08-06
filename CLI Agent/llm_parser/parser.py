@@ -55,7 +55,7 @@ AVAILABLE_TOOLS = {
     "system_config": {
         "description": "Perform system configuration tasks like checking env vars or modifying PATH",
         "params": {
-        "action": "The system_config action to perform (e.g. check, set, append_to_path, remove_from_path, is_port_open, is_service_running, remove_env, list_env)",
+            "action": "The system_config action to perform (e.g. check, set, append_to_path, remove_from_path, is_port_open, is_service_running, remove_env, list_env)",
             "tool_name": "The name of the variable, service, or path to act on",
             "value": "Optional value (used with 'set')"
         }
@@ -70,6 +70,8 @@ AVAILABLE_TOOLS = {
         "description": "Uninstall a VSCode extension",
         "params": {
             "tool_name": "The ID of the extension to uninstall (e.g., 'ms-python.python')"
+        }
+    },
     "git_setup": {
         "description": "Perform git-related tasks such as cloning, switching branches, generating SSH keys, adding SSH keys to GitHub, or checking SSH authentication.",
         "params": {
