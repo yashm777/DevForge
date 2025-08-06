@@ -177,8 +177,6 @@ def clone_repository_ssh(repo_url: str, dest_dir: str = None, branch: str = None
         logging.info(f"Cloning repository {repo_url} ...")
         subprocess.run(cmd, check=True, capture_output=True, text=True)
         logging.info(f"Repository cloned to {dest_dir or 'current directory'}.")
-        if branch:
-            switch_branch(dest_dir or ".", branch)
         return f"Repository cloned to {dest_dir or 'current directory'}"
     except subprocess.CalledProcessError as e:
         error_msg = e.stderr or e.stdout or str(e)
@@ -187,28 +185,6 @@ def clone_repository_ssh(repo_url: str, dest_dir: str = None, branch: str = None
             f"Failed to clone repository: {error_msg}\n"
             "Check that your SSH key is authorized and the repository exists."
         )
-
-
-def switch_branch(repo_path: str, branch: str):
-    """
-    Switch to an existing branch or create it if it doesn't exist.
-    """
-    if not repo_path or not branch:
-        raise ValueError("Both repository path and branch name are required.")
-    repo_path = Path(repo_path).expanduser().resolve()
-    if not (repo_path / ".git").exists():
-        raise Exception(f"{repo_path} is not a Git repository.")
-    try:
-        result = subprocess.run(
-            ["git", "checkout", branch], cwd=repo_path,
-            check=False, capture_output=True, text=True
-        )
-        if result.returncode != 0:
-            subprocess.run(["git", "checkout", "-b", branch], cwd=repo_path, check=True)
-        logging.info(f"Switched to branch '{branch}' in {repo_path}")
-        return f"Switched to branch '{branch}' in {repo_path}"
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"Failed to switch branch: {e}")
 
 
 def perform_git_setup(
@@ -222,7 +198,7 @@ def perform_git_setup(
 ):
     """
     Entry point to perform git-related tasks. Handles pre-checks and executes action.
-    Actions supported: 'clone', 'switch_branch', 'generate_ssh_key', 'add_ssh_key', 'check_ssh_key_auth'
+    Actions supported: 'clone', 'generate_ssh_key', 'add_ssh_key', 'check_ssh_key_auth'
     """
     if not is_git_installed():
         return {"status": "error", "message": "Git is not installed on this system."}
@@ -239,13 +215,6 @@ def perform_git_setup(
                 return {"status": "error", "message": "Repository URL is required for cloning."}
             msg = clone_repository_ssh(repo_url, dest_dir, branch)
             return {"status": "success", "action": action, "details": {"message": msg, "repo_url": repo_url, "branch": branch}}
-
-        elif action == "switch_branch":
-            if not dest_dir or not branch:
-                return {"status": "error", "message": "Both repo path and branch name are required."}
-            configure_git_credentials(username, email)
-            msg = switch_branch(dest_dir, branch)
-            return {"status": "success", "action": action, "details": {"message": msg, "repo_path": dest_dir, "branch": branch}}
 
         elif action == "add_ssh_key":
             key_path = os.path.expanduser("~/.ssh/id_rsa.pub")
@@ -272,7 +241,7 @@ def perform_git_setup(
             return {"status": result.get("status", "error"), "action": action, "details": result}
 
         else:
-            valid_actions = ['clone', 'switch_branch', 'generate_ssh_key', 'add_ssh_key', 'check_ssh_key_auth']
+            valid_actions = ['clone', 'generate_ssh_key', 'add_ssh_key', 'check_ssh_key_auth']
             return {"status": "error", "message": f"Unsupported action: {action}. Valid actions are: {', '.join(valid_actions)}"}
     except Exception as e:
         logging.error("Git setup error: %s", str(e))

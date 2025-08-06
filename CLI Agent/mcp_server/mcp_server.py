@@ -15,7 +15,7 @@ from tools.installers.windows import install_windows_tool, install_windows_tool_
 from tools.installers.linux import install_linux_tool
 from tools.uninstallers.mac import uninstall_mac_tool
 from tools.uninstallers.windows import uninstall_windows_tool
-from tools.uninstallers.linux import uninstall_tool_linux
+from tools.uninstallers.linux import uninstall_linux_tool
 from tools.version_checkers.mac import check_version_mac_tool
 from tools.uninstallers.linux import uninstall_linux_tool
 from tools.version_checkers.windows import check_version as check_version_windows
