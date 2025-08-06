@@ -59,6 +59,18 @@ AVAILABLE_TOOLS = {
             "tool_name": "The name of the variable, service, or path to act on",
             "value": "Optional value (used with 'set')"
         }
+    },
+    "install_vscode_extension": {
+        "description": "Install a VSCode extension",
+        "params": {
+            "tool_name": "The ID of the extension to install (e.g., 'ms-python.python')"
+        }
+    },
+    "uninstall_vscode_extension": {
+        "description": "Uninstall a VSCode extension",
+        "params": {
+            "tool_name": "The ID of the extension to uninstall (e.g., 'ms-python.python')"
+        }
     }
 
 }
@@ -70,6 +82,7 @@ def build_prompt(user_input: str) -> str:
     additional_guidance = """
 # Additional Guidelines:
 - When users provide ambiguous tool names, map them to actual package names used by Linux package managers like APT.
+- Interpret phrases like "get me X", "download X", "I need X", "install X for me" as install commands.
 - Examples of name resolution:
   - "java" → "default-jdk"
   - "node" or "nodejs" → "nodejs"
@@ -109,6 +122,8 @@ Do NOT include "version" for system_config tasks.
         "For code generation, use method 'generate_code' with 'description' param.\n\n"
         "Examples:\n"
         "- Install: {'method': 'tool_action_wrapper', 'params': {'task': 'install', 'tool_name': 'docker'}}\n"
+        "- 'Get me docker': {'method': 'tool_action_wrapper', 'params': {'task': 'install', 'tool_name': 'docker'}}\n"
+        "- 'I need python': {'method': 'tool_action_wrapper', 'params': {'task': 'install', 'tool_name': 'python3'}}\n"
         "- Version check: {'method': 'tool_action_wrapper', 'params': {'task': 'version', 'tool_name': 'python'}}\n"
         "- System info: {'method': 'info://server', 'params': {}}\n"
         "- Generate code: {'method': 'generate_code', 'params': {'description': 'hello world function'}}\n\n"
