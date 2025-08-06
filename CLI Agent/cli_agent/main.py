@@ -4,6 +4,7 @@ import sys
 import subprocess
 import time
 import os
+import re
 from typing import Dict, Any
 
 import typer
@@ -30,7 +31,6 @@ mcp_client = None
 
 def extract_java_version_from_request(command: str) -> str:
     """Extract Java version number from user request"""
-    import re
     # Look for patterns like "java 17", "java 11", "jdk 21", etc.
     version_patterns = [
         r'java\s+(\d+)',
@@ -49,8 +49,6 @@ def extract_java_version_from_request(command: str) -> str:
 def check_java_version_installed(version: str) -> bool:
     """Check if a specific Java version is installed on Mac"""
     try:
-        import subprocess
-        import os
         # Check if the specific Java version directory exists
         java_path = f"/opt/homebrew/Cellar/openjdk@{version}"
         return os.path.exists(java_path)
@@ -60,13 +58,11 @@ def check_java_version_installed(version: str) -> bool:
 def get_active_java_version() -> str:
     """Get the currently active Java version by running java -version"""
     try:
-        import subprocess
         result = subprocess.run(['java', '-version'], capture_output=True, text=True)
         if result.returncode == 0:
             # Java version info goes to stderr
             output = result.stderr
             # Parse the output to extract version
-            import re
             # Look for patterns like "17.0.16" or "21.0.8"
             version_match = re.search(r'"(\d+)\.', output)
             if version_match:
@@ -207,7 +203,6 @@ def run(
                 java_home_path = f"/opt/homebrew/Cellar/openjdk@{requested_java_version}"
                 # Find the actual version directory
                 try:
-                    import os
                     version_dirs = [d for d in os.listdir(java_home_path) if os.path.isdir(os.path.join(java_home_path, d))]
                     if version_dirs:
                         actual_version = version_dirs[0]  # Take the first (and usually only) version directory
@@ -314,7 +309,6 @@ def run(
                                             if isinstance(v, str) and 'JAVA_HOME=' in v and '/opt/homebrew/' in v:
                                                 # This is Mac-specific (homebrew path)
                                                 is_mac_java = True
-                                                import re
                                                 match = re.search(r'JAVA_HOME=([^\s\n]+)', v)
                                                 if match:
                                                     java_home_path = match.group(1)
@@ -351,7 +345,6 @@ def run(
                                         # Add Java configuration with dynamic version detection
                                         with open(os.path.expanduser('~/.zshrc'), 'a') as f:
                                             # Extract version number from java_home_path for labeling
-                                            import re
                                             version_match = re.search(r'openjdk@?(\d+)', java_home_path)
                                             version_label = version_match.group(1) if version_match else "current"
                                             
@@ -369,7 +362,6 @@ def run(
                                         console.print(f"\n[bold cyan]Please run these commands manually:[/bold cyan]")
                                         
                                         # Extract version for manual commands
-                                        import re
                                         version_match = re.search(r'openjdk@?(\d+)', java_home_path)
                                         version_label = version_match.group(1) if version_match else "current"
                                         
@@ -406,7 +398,6 @@ def run(
                         java_home_path = None
                         for k, v in result["result"].items():
                             if isinstance(v, str) and '/opt/homebrew/Cellar/openjdk' in v:
-                                import re
                                 # Extract the full path to openjdk.jdk/Contents/Home
                                 match = re.search(r'/opt/homebrew/Cellar/openjdk@?\d*/[^/\s]+/libexec/openjdk\.jdk/Contents/Home', v)
                                 if match:
@@ -438,7 +429,6 @@ def run(
                                 # Add Java configuration with dynamic version detection
                                 with open(os.path.expanduser('~/.zshrc'), 'a') as f:
                                     # Extract version number from java_home_path for labeling
-                                    import re
                                     version_match = re.search(r'openjdk@?(\d+)', java_home_path)
                                     version_label = version_match.group(1) if version_match else "current"
                                     
@@ -456,7 +446,6 @@ def run(
                                 console.print(f"\n[bold cyan]Please run these commands manually:[/bold cyan]")
                                 
                                 # Extract version for manual commands
-                                import re
                                 version_match = re.search(r'openjdk@?(\d+)', java_home_path)
                                 version_label = version_match.group(1) if version_match else "current"
                                 
@@ -507,7 +496,6 @@ def run(
                 java_home_path = None
                 for k, v in result["result"].items():
                     if isinstance(v, str) and '/opt/homebrew/Cellar/openjdk' in v:
-                        import re
                         # Extract the full path to openjdk.jdk/Contents/Home
                         match = re.search(r'/opt/homebrew/Cellar/openjdk@?\d*/[^/\s]+/libexec/openjdk\.jdk/Contents/Home', v)
                         if match:
@@ -539,7 +527,6 @@ def run(
                         # Add Java configuration with dynamic version detection
                         with open(os.path.expanduser('~/.zshrc'), 'a') as f:
                             # Extract version number from java_home_path for labeling
-                            import re
                             version_match = re.search(r'openjdk@?(\d+)', java_home_path)
                             version_label = version_match.group(1) if version_match else "current"
                             
@@ -557,7 +544,6 @@ def run(
                         console.print(f"\n[bold cyan]Please run these commands manually:[/bold cyan]")
                         
                         # Extract version for manual commands
-                        import re
                         version_match = re.search(r'openjdk@?(\d+)', java_home_path)
                         version_label = version_match.group(1) if version_match else "current"
                         

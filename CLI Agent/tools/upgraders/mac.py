@@ -24,14 +24,11 @@ def get_post_upgrade_instructions(tool_name: str, version: str) -> str:
     """
     tool_base = tool_name.split('@')[0].lower()
     
-    # For Java/OpenJDK, extract major version for path
-    java_major_version = version.split('.')[0] if tool_base in ['java', 'openjdk'] else None
-    
     instructions = {
         'node': f"• Verify: `node --version` should show v{version}\n• Use: `npm install -g <package>` to install global packages\n• Consider using `nvm` for managing multiple Node.js versions",
         'python': f"• Verify: `python3 --version` should show {version}\n• Use: `pip3 install <package>` to install packages\n• Consider using `pyenv` for managing multiple Python versions",
-        'java': f"• Verify: `java --version` should show {version}\n• Copy this export command:\nexport JAVA_HOME=/opt/homebrew/Cellar/openjdk@{java_major_version}/{version}/libexec/openjdk.jdk/Contents/Home\n• Add to ~/.zshrc:\necho 'export JAVA_HOME=/opt/homebrew/Cellar/openjdk@{java_major_version}/{version}/libexec/openjdk.jdk/Contents/Home' >> ~/.zshrc",
-        'openjdk': f"• Verify: `java --version` should show OpenJDK {version}\n• Copy this export command:\nexport JAVA_HOME=/opt/homebrew/Cellar/openjdk@{java_major_version}/{version}/libexec/openjdk.jdk/Contents/Home\n• Add to ~/.zshrc:\necho 'export JAVA_HOME=/opt/homebrew/Cellar/openjdk@{java_major_version}/{version}/libexec/openjdk.jdk/Contents/Home' >> ~/.zshrc",
+        'java': f"• Verify: `java --version` should show {version}\n• Set JAVA_HOME: `export JAVA_HOME=/opt/homebrew/Cellar/openjdk@{version.split('.')[0]}/{version}/libexec/openjdk.jdk/Contents/Home`\n• Add to ~/.zshrc: `echo 'export JAVA_HOME=/opt/homebrew/Cellar/openjdk@{version.split('.')[0]}/{version}/libexec/openjdk.jdk/Contents/Home' >> ~/.zshrc`",
+        'openjdk': f"• Verify: `java --version` should show OpenJDK {version}\n• Set JAVA_HOME: `export JAVA_HOME=/opt/homebrew/Cellar/openjdk@{version.split('.')[0]}/{version}/libexec/openjdk.jdk/Contents/Home`\n• Add to ~/.zshrc: `echo 'export JAVA_HOME=/opt/homebrew/Cellar/openjdk@{version.split('.')[0]}/{version}/libexec/openjdk.jdk/Contents/Home' >> ~/.zshrc`",
         'go': f"• Verify: `go version` should show {version}\n• Create your first project: `go mod init myproject`\n• Build projects: `go build` or `go run main.go`",
         'docker': f"• Verify: `docker --version` should show {version}\n• Start Docker daemon if needed\n• Try: `docker run hello-world` to test installation",
         'git': f"• Verify: `git --version` should show {version}\n• Configure: `git config --global user.name \"Your Name\"`\n• Configure: `git config --global user.email \"your@email.com\"`",
@@ -60,9 +57,56 @@ def upgrade_mac_tool(tool_name, version="latest"):
         resolved_tool_name = resolved["name"]
         logger.info(f"Resolved '{tool_name}' to '{resolved_tool_name}' for Mac upgrade")
         
-        # Use the comprehensive tool manager (MacToolManager.upgrade_tool only takes tool_name)
         manager = get_manager()
-        result = manager.upgrade_tool(resolved_tool_name)
+        
+        # Handle specific version upgrades (like "upgrade to java 21")
+        if version != "latest" and version.isdigit():
+            # For specific versions, we need to install that version and switch to it
+            base_tool = tool_name.lower().split('@')[0]
+            
+            if base_tool in ['java', 'openjdk']:
+                # Handle Java specifically - install specific version and switch
+                versioned_package = f"openjdk@{version}"
+                
+                # First install the specific version
+                install_result = manager.install_tool(versioned_package)
+                
+                if install_result.get("status") != "success":
+                    return install_result
+                
+                # Now switch to that version by updating shell configuration
+                switch_result = switch_java_version(version)
+                
+                if switch_result.get("status") == "success":
+                    result = {
+                        "status": "success",
+                        "message": f"Successfully upgraded {tool_name} to version {version} and switched to it",
+                        "new_version": version,
+                        "switched": True
+                    }
+                else:
+                    result = {
+                        "status": "success", 
+                        "message": f"Successfully installed {tool_name} version {version}, but shell configuration update failed: {switch_result.get('message', 'Unknown error')}",
+                        "new_version": version,
+                        "switched": False,
+                        "switch_error": switch_result.get('message')
+                    }
+                
+                # Add post-upgrade instructions
+                instructions = get_post_upgrade_instructions(resolved_tool_name, version)
+                if instructions:
+                    result["instructions"] = instructions
+                    result["message"] = f"{result['message']}\n\nNext steps:\n{instructions}"
+                
+                return result
+            else:
+                # For other tools, try to install specific version
+                versioned_package = f"{resolved_tool_name}@{version}"
+                result = manager.install_tool(versioned_package)
+        else:
+            # Use the original upgrade logic for latest versions
+            result = manager.upgrade_tool(resolved_tool_name)
         
         # Enhance successful results with post-upgrade instructions
         if result.get("status") == "success" and "new_version" in result:
@@ -79,6 +123,28 @@ def upgrade_mac_tool(tool_name, version="latest"):
             "status": "error",
             "message": f"Upgrade failed: {str(e)}",
             "details": {"tool_name": tool_name, "error": str(e)}
+        }
+
+def switch_java_version(version):
+    """
+    Switch to a specific Java version by updating shell configuration.
+    
+    Args:
+        version: Java version to switch to (e.g., "21", "11", "17")
+        
+    Returns:
+        Dictionary with status and message
+    """
+    try:
+        # Import the function from the system_config module to avoid duplication
+        from tools.system_config.mac import switch_java_version as mac_switch_java
+        return mac_switch_java(version)
+        
+    except Exception as e:
+        logger.error(f"Failed to switch Java version: {e}")
+        return {
+            "status": "error", 
+            "message": f"Failed to switch Java version: {str(e)}"
         }
 
 def downgrade_mac_tool(tool_name, target_version=None):
