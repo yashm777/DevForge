@@ -219,7 +219,6 @@ async def mcp_endpoint(request: Request):
         result = None
         if method == "tool_action_wrapper":
             task = params.get("task")
-            version = params.get("version", "latest")
             handler = task_handlers.get(task)
             
             if handler:
@@ -228,6 +227,15 @@ async def mcp_endpoint(request: Request):
                     action = params.get("action", "check")
                     value = params.get("value", None)
                     result = handler(tool, action, value)
+                elif task == "uninstall":
+                    tool = params.get("tool_name")
+                    result = handler(tool)
+                elif task == "install_vscode_extension":
+                    extension_id = params.get("extension_id") or params.get("tool_name")
+                    result = handler(extension_id)
+                elif task == "uninstall_vscode_extension":
+                    extension_id = params.get("extension_id") or params.get("tool_name")
+                    result = handler(extension_id)
                 elif task == "git_setup":
                     action = params.get("action")
                     repo_url = params.get("repo_url", "")
@@ -236,9 +244,9 @@ async def mcp_endpoint(request: Request):
                     email = params.get("email", "")
                     dest_dir = params.get("dest_dir", "")
                     result = handler(action, repo_url, branch, username, email, dest_dir)
-                elif task == "uninstall":
-                    result = handler(tool)
                 else:
+                    tool = params.get("tool_name")
+                    version = params.get("version", "latest")
                     result = handler(tool, version)
             else:
                 result = {"status": "error", "message": f"Unknown task: {task}"}
@@ -253,6 +261,14 @@ async def mcp_endpoint(request: Request):
         elif method == "get_logs":
             lines = params.get("lines", 50)
             result = {"logs": get_server_logs(lines)}
+            
+        elif method == "install_vscode_extension":
+            extension_id = params.get("extension_id") or params.get("tool_name")
+            result = install_vscode_extension(extension_id)
+            
+        elif method == "uninstall_vscode_extension":
+            extension_id = params.get("extension_id") or params.get("tool_name")
+            result = uninstall_vscode_extension(extension_id)
 
         else:
             result = {"status": "error", "message": f"Unknown method: {method}"}
