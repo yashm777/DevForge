@@ -157,17 +157,16 @@ def clone_repository_ssh(repo_url: str, dest_dir: str = None, branch: str = None
     auth_result = check_ssh_key_auth()
     if auth_result["status"] != "success":
         logging.error(f"SSH authentication failed: {auth_result['message']}")
-        manual_steps = (
-            "Your SSH key is not authorized with GitHub.\n"
+        manual_msg = (
             "Manual steps to add your SSH key to GitHub:\n"
-            "1. Copy your public key:\n"
-            f"{open(pub_key_path).read()}\n"
-            "2. Go to https://github.com/settings/ssh/new\n"
-            "3. Paste the key and save.\n"
-            "After adding, try cloning again."
+            "1. Run the following command to display your public key:\n"
+            "   cat ~/.ssh/id_rsa.pub\n"
+            "2. Copy the output.\n"
+            "3. Go to https://github.com/settings/ssh/new\n"
+            "4. Paste the key and save."
         )
         raise RuntimeError(
-            f"SSH key is not authorized with GitHub. {auth_result['message']}\n{manual_steps}"
+            f"SSH key is not authorized with GitHub. {auth_result['message']}\n{manual_msg}"
         )
 
     # Proceed with cloning
@@ -259,11 +258,12 @@ def perform_git_setup(
                 return {"status": "success", "action": action, "details": {"message": result}}
             else:
                 manual_msg = (
-                    "Manual steps to add your SSH key to GitHub:\n"
-                    "1. Copy the public key below:\n"
-                    f"{pubkey}\n"
-                    "2. Go to https://github.com/settings/ssh/new\n"
-                    "3. Paste the key and save."
+                "Manual steps to add your SSH key to GitHub:\n"
+                "1. Run the following command to display your public key:\n"
+                "   cat ~/.ssh/id_rsa.pub\n"
+                "2. Copy the output.\n"
+                "3. Go to https://github.com/settings/ssh/new\n"
+                "4. Paste the key and save."
                 )
                 return {"status": "success", "action": action, "details": {"message": manual_msg}}
 
@@ -331,8 +331,9 @@ def check_ssh_key_auth() -> dict:
             ["ssh", "-T", "git@github.com"],
             capture_output=True, text=True, check=True
         )
-        output = result.stdout.lower() + result.stderr.lower()
-        if "successfully authenticated" in output or "hi " in output:
+        output = (result.stdout + result.stderr).lower()
+        # Treat "successfully authenticated" or "does not provide shell access" as success
+        if "successfully authenticated" in output or "does not provide shell access" in output or "hi " in output:
             return {"status": "success", "message": "SSH key is correctly configured and connected to GitHub!"}
         else:
             return {"status": "warning", "message": result.stdout.strip() or result.stderr.strip()}
