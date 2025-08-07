@@ -233,7 +233,8 @@ def perform_git_setup(
                 return {"status": "success", "action": action, "details": {"message": result}}
             else:
                 manual_msg = (
-                    "Manual steps to add your SSH key to GitHub:\n"
+                    "You did not provide a GitHub Personal Access Token (PAT), so the key cannot be added automatically.\n"
+                    "Here are the manual steps to add your SSH key to GitHub:\n"
                     "1. Run the following command to display your public key:\n"
                     "   cat ~/.ssh/id_rsa.pub\n"
                     "2. Copy the output.\n"
@@ -284,7 +285,8 @@ def setup_github_ssh_key(email: str, pat: str = None):
         result = add_ssh_key_to_github(pubkey, pat)
         print(result)
     else:
-        print("\nManual steps to add your SSH key to GitHub:")
+        print("\nYou did not provide a GitHub Personal Access Token (PAT), so the key cannot be added automatically.")
+        print("Here are the manual steps to add your SSH key to GitHub:")
         print("1. Copy the public key below:")
         print(pubkey)
         print("2. Go to https://github.com/settings/ssh/new")
