@@ -47,8 +47,7 @@ def get_installed_extensions():
 
 def install_extension(extension_id):
     """
-    Install a VSCode extension and verify its installation. This function is platform-aware
-    and handles Windows and Linux/macOS differently to ensure compatibility.
+    Install a VSCode extension with platform-specific logic and verbose logging for diagnostics.
     
     Args:
         extension_id (str): The ID of the extension to install (e.g., 'ms-python.python').
@@ -65,32 +64,39 @@ def install_extension(extension_id):
     if any(extension_id.lower() == ext.lower() for ext in extensions_before):
         return {"status": "Success", "message": f"Extension '{extension_id}' is already installed."}
 
-    print(f"Attempting to install '{extension_id}'...")
+    print(f"Attempting to install '{extension_id}' with verbose logging for diagnostics...")
 
     try:
-        install_command = [vscode_executable, "--install-extension", extension_id, "--force"]
-        
-        # --- Platform-Specific Logic ---
+        # --- Platform-Specific Command ---
         if sys.platform == "win32":
-            # WINDOWS: Keep the original command which is working
+            # WINDOWS: Keep the original working command
+            install_command = [vscode_executable, "--install-extension", extension_id, "--force"]
             subprocess.run(install_command, check=True, shell=True, capture_output=True, text=True)
         else:
-            # LINUX/MACOS: Remove shell=True and add SSL bypass environment variable
+            # LINUX/MACOS: Add --verbose for detailed error logging
+            install_command = [vscode_executable, "--install-extension", extension_id, "--force", "--verbose"]
             env = os.environ.copy()
             env["NODE_TLS_REJECT_UNAUTHORIZED"] = "0"
-            subprocess.run(install_command, check=True, capture_output=True, text=True, env=env)
+            # We will now intentionally capture and print the output for diagnosis
+            result = subprocess.run(install_command, check=True, capture_output=True, text=True, env=env)
+            print("--- VSCode Verbose Output ---")
+            print(result.stdout)
+            print(result.stderr)
+            print("-----------------------------")
         
-        # --- Verification Logic (remains the same) ---
+        # --- Verification Logic ---
         extensions_after = get_installed_extensions()
-        newly_installed_extensions = extensions_after - extensions_before
-
-        if any(extension_id.lower() == ext.lower() for ext in newly_installed_extensions):
-            return {"status": "Success", "message": f"Extension '{extension_id}' installed and verified successfully."}
-        
         if any(extension_id.lower() == ext.lower() for ext in extensions_after):
-            return {"status": "Success", "message": f"Extension '{extension_id}' is present after installation attempt."}
+            return {"status": "Success", "message": f"Extension '{extension_id}' installed and verified successfully."}
 
-        return {"status": "Error", "message": f"Installation of '{extension_id}' failed verification."}
+        return {"status": "Error", "message": f"Installation of '{extension_id}' failed verification. See console for verbose logs."}
+
+    except subprocess.CalledProcessError as e:
+        # The verbose output will be in stderr, which is crucial for debugging
+        error_message = e.stderr.strip() if e.stderr else "No error output from VSCode."
+        return {"status": "Error", "message": f"Failed to install extension '{extension_id}'. Verbose Error Log:\n---\n{error_message}\n---"}
+    except FileNotFoundError:
+        return {"status": "Error", "message": "The 'code' command is not available."}
 
     except subprocess.CalledProcessError as e:
         # Provide a more detailed error message
