@@ -1,131 +1,128 @@
 import subprocess
 import sys
 import os
-import time
-import shutil
-
-def _run_vscode_command(command):
-    """
-    Runs a VSCode command with the necessary environment to force CLI mode
-    and handles command execution.
-    """
-    cli_env = os.environ.copy()
-    cli_env["VSCODE_CLI"] = "1"
-    
-    try:
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            env=cli_env,
-            timeout=120  # Add a timeout for safety
-        )
-        return result
-    except FileNotFoundError:
-        return None
-    except Exception as e:
-        # Catch other potential exceptions like timeout
-        return subprocess.CompletedProcess(command, 1, stdout="", stderr=str(e))
-
 
 def find_vscode_executable():
-    """Find the path to the VSCode executable in a more robust way."""
-    for name in ["code", "code-insiders"]:
-        if sys.platform == "win32":
-            # In Windows, `code.cmd` is usually in the PATH
-            if shutil.which(name):
-                return name
-        else:
-            # In Linux/macOS, check common paths
-            for path in ["/usr/bin", "/usr/local/bin", "/snap/bin"]:
-                if os.path.exists(os.path.join(path, name)):
-                    return os.path.join(path, name)
-            # Fallback to PATH
-            if shutil.which(name):
-                return name
+    """Find the path to the VSCode executable, prioritizing official locations over PATH."""
+    # 1. Check common locations for Windows first to prioritize official VSCode
+    if sys.platform == "win32":
+        user_profile = os.path.expanduser("~")
+        common_paths = [
+            os.path.join(os.environ.get("ProgramFiles", "C:\\Program Files"), "Microsoft VS Code", "bin", "code.cmd"),
+            os.path.join(user_profile, "AppData", "Local", "Programs", "Microsoft VS Code", "bin", "code.cmd")
+        ]
+        for path in common_paths:
+            if os.path.exists(path):
+                try:
+                    subprocess.run([path, "--version"], check=True, capture_output=True, text=True)
+                    return path
+                except (FileNotFoundError, subprocess.CalledProcessError):
+                    continue
+
+    # 2. Fallback to checking if 'code' is in the PATH
+    try:
+        subprocess.run(["code", "--version"], check=True, shell=True, capture_output=True, text=True)
+        return "code"
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        pass  # Not in PATH
+
     return None
 
 def is_vscode_installed():
     """Check if VSCode is installed."""
     return find_vscode_executable() is not None
 
-def get_installed_extensions(vscode_executable):
-    """Get a set of installed VSCode extensions."""
+def get_installed_extensions():
+    """Get a list of installed VSCode extensions."""
+    vscode_executable = find_vscode_executable()
     if not vscode_executable:
         return set()
     
-    command = [vscode_executable, "--list-extensions"]
-    result = _run_vscode_command(command)
-    
-    if result and result.returncode == 0:
-        extensions = result.stdout.strip().lower().split('\n')
-        return set(ext for ext in extensions if ext)
-    return set()
+    try:
+        command = [vscode_executable, "--list-extensions"]
+        result = subprocess.run(command, check=True, shell=True, capture_output=True, text=True)
+        return set(result.stdout.strip().split('\n'))
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return set()
 
 def install_extension(extension_id):
-    """Install a VSCode extension with robust verification."""
+    """
+    Install a VSCode extension and verify its installation by comparing extension lists.
+    
+    Args:
+        extension_id (str): The ID of the extension to install (e.g., 'ms-python.python').
+        
+    Returns:
+        dict: A dictionary with a status message.
+    """
     vscode_executable = find_vscode_executable()
     if not vscode_executable:
-        return {"status": "Error", "message": "VSCode executable not found."}
+        return {"status": "Error", "message": "VSCode is not installed or could not be found."}
 
-    normalized_id = extension_id.lower()
+    extensions_before = get_installed_extensions()
     
-    # Initial check to see if it's already installed
-    installed_extensions = get_installed_extensions(vscode_executable)
-    if normalized_id in installed_extensions:
+    if any(extension_id.lower() == ext.lower() for ext in extensions_before):
         return {"status": "Success", "message": f"Extension '{extension_id}' is already installed."}
 
     print(f"Attempting to install '{extension_id}'...")
-    
-    command = [vscode_executable, "--install-extension", extension_id]
-    result = _run_vscode_command(command)
 
-    # Primary verification: Check the command output. This is the most reliable method.
-    if result and result.returncode == 0:
-        stdout_lower = result.stdout.lower()
-        if "successfully installed" in stdout_lower:
-            return {"status": "Success", "message": f"Extension '{extension_id}' installed successfully."}
-        # Handle cases where it might already be installed but our initial check missed it
-        if "is already installed" in stdout_lower:
-            return {"status": "Success", "message": f"Extension '{extension_id}' is already installed."}
+    try:
+        install_command = [vscode_executable, "--install-extension", extension_id, "--force"]
+        subprocess.run(install_command, check=True, shell=True, capture_output=True, text=True)
+        
+        extensions_after = get_installed_extensions()
 
-    # Secondary verification: If primary failed, check the list again.
-    time.sleep(3) # Give VS Code a moment to update its list
-    installed_extensions_after = get_installed_extensions(vscode_executable)
-    if normalized_id in installed_extensions_after:
-        return {"status": "Success", "message": f"Extension '{extension_id}' installed and verified."}
+        newly_installed_extensions = extensions_after - extensions_before
 
-    # If all checks fail, provide a detailed error.
-    error_details = result.stderr.strip() if result and result.stderr else "No error output."
-    return {"status": "Error", "message": f"Installation of '{extension_id}' failed. Details: {error_details}"}
+        if any(extension_id.lower() == ext.lower() for ext in newly_installed_extensions):
+            return {"status": "Success", "message": f"Extension '{extension_id}' installed and verified successfully."}
+        
+        if any(extension_id.lower() == ext.lower() for ext in extensions_after):
+            return {"status": "Success", "message": f"Extension '{extension_id}' is present after installation attempt."}
 
+        return {"status": "Error", "message": f"Installation of '{extension_id}' failed verification."}
+
+    except subprocess.CalledProcessError as e:
+        return {"status": "Error", "message": f"Failed to install extension '{extension_id}'. Error: {e.stderr.strip()}"}
+    except FileNotFoundError:
+        return {"status": "Error", "message": "The 'code' command is not available."}
 
 def uninstall_extension(extension_id):
-    """Uninstall a VSCode extension with robust verification."""
+    """
+    Uninstall a VSCode extension and verify its removal by comparing extension lists.
+    
+    Args:
+        extension_id (str): The ID of the extension to uninstall (e.g., 'ms-python.python').
+        
+    Returns:
+        dict: A dictionary with a status message.
+    """
     vscode_executable = find_vscode_executable()
     if not vscode_executable:
-        return {"status": "Error", "message": "VSCode executable not found."}
-        
-    normalized_id = extension_id.lower()
+        return {"status": "Error", "message": "VSCode is not installed or could not be found."}
+
+    extensions_before = get_installed_extensions()
     
-    if normalized_id not in get_installed_extensions(vscode_executable):
+    if not any(extension_id.lower() == ext.lower() for ext in extensions_before):
         return {"status": "Success", "message": f"Extension '{extension_id}' is not installed."}
 
     print(f"Attempting to uninstall '{extension_id}'...")
-    
-    command = [vscode_executable, "--uninstall-extension", extension_id]
-    result = _run_vscode_command(command)
 
-    if result and result.returncode == 0 and "successfully uninstalled" in result.stdout.lower():
-        return {"status": "Success", "message": f"Extension '{extension_id}' uninstalled successfully."}
+    try:
+        uninstall_command = [vscode_executable, "--uninstall-extension", extension_id]
+        subprocess.run(uninstall_command, check=True, shell=True, capture_output=True, text=True)
+        
+        extensions_after = get_installed_extensions()
 
-    time.sleep(3)
-    if normalized_id not in get_installed_extensions(vscode_executable):
-        return {"status": "Success", "message": f"Extension '{extension_id}' uninstalled and verified."}
+        if not any(extension_id.lower() == ext.lower() for ext in extensions_after):
+            return {"status": "Success", "message": f"Extension '{extension_id}' uninstalled and verified successfully."}
+        
+        return {"status": "Error", "message": f"Uninstallation of '{extension_id}' failed verification."}
 
-    error_details = result.stderr.strip() if result and result.stderr else "No error output."
-    return {"status": "Error", "message": f"Uninstallation of '{extension_id}' failed. Details: {error_details}"}
-
+    except subprocess.CalledProcessError as e:
+        return {"status": "Error", "message": f"Failed to uninstall extension '{extension_id}'. Error: {e.stderr.strip()}"}
+    except FileNotFoundError:
+        return {"status": "Error", "message": "The 'code' command is not available."}
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
@@ -143,6 +140,6 @@ if __name__ == "__main__":
         print("Invalid action. Use 'install' or 'uninstall'.")
         sys.exit(1)
         
-    print(f"Status: {result['status']}\nMessage: {result['message']}")
+    print(result["message"])
     if result["status"] == "Error":
         sys.exit(1)
