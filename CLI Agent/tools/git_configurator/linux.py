@@ -105,20 +105,22 @@ def add_ssh_key_to_github_or_manual(email: str, pat: str = None, key_path: str =
         else:
             manual_msg = (
                 f"❌ Failed to add SSH key via API: {response.text}\n"
-                "Manual steps to add your SSH key to GitHub:\n"
-                "1. Copy the public key below:\n"
-                f"{pubkey}\n"
-                "2. Go to https://github.com/settings/ssh/new\n"
-                "3. Paste the key and save."
+               "Manual steps to add your SSH key to GitHub:\n"
+            "1. Run the following command to display your public key:\n"
+            "   cat ~/.ssh/id_rsa.pub\n"
+            "2. Copy the output.\n"
+            "3. Go to https://github.com/settings/ssh/new\n"
+            "4. Paste the key and save."
             )
             return {"status": "warning", "message": manual_msg}
     else:
         manual_msg = (
             "Manual steps to add your SSH key to GitHub:\n"
-            "1. Copy the public key below:\n"
-            f"{pubkey}\n"
-            "2. Go to https://github.com/settings/ssh/new\n"
-            "3. Paste the key and save."
+            "1. Run the following command to display your public key:\n"
+            "   cat ~/.ssh/id_rsa.pub\n"
+            "2. Copy the output.\n"
+            "3. Go to https://github.com/settings/ssh/new\n"
+            "4. Paste the key and save."
         )
         return {"status": "success", "message": manual_msg}
 

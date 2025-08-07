@@ -38,27 +38,48 @@ def format_result(result: Dict[str, Any]) -> str:
                     table.add_row(f"[bold]{k}[/bold]", str(v))
                 return table
             if "message" in inner_result:
-                return inner_result["message"]
+                # Show manual instructions as plain output if present
+                msg = inner_result["message"]
+                if "Manual steps to add your SSH key to GitHub" in msg:
+                    return msg
+                return msg
             elif "status" in inner_result:
                 status = inner_result["status"]
                 message = inner_result.get("message", "")
                 if status == "success":
+                    # Show manual instructions as plain output if present
+                    if "Manual steps to add your SSH key to GitHub" in message:
+                        return message
                     return f"✓ {message}" if message else "✓ Operation completed successfully"
                 elif status == "error":
                     return f"✗ {message}" if message else "✗ Operation failed"
+                elif status == "warning":
+                    # Show manual instructions as plain output if present
+                    if "Manual steps to add your SSH key to GitHub" in message:
+                        return message
+                    return f"! {message}" if message else "! Warning"
                 else:
                     return message
             else:
                 return str(inner_result)
         elif "message" in result:
-            return result["message"]
+            msg = result["message"]
+            if "Manual steps to add your SSH key to GitHub" in msg:
+                return msg
+            return msg
         elif "status" in result:
             status = result["status"]
             message = result.get("message", "")
             if status == "success":
+                if "Manual steps to add your SSH key to GitHub" in message:
+                    return message
                 return f"✓ {message}" if message else "✓ Operation completed successfully"
             elif status == "error":
                 return f"✗ {message}" if message else "✗ Operation failed"
+            elif status == "warning":
+                if "Manual steps to add your SSH key to GitHub" in message:
+                    return message
+                return f"! {message}" if message else "! Warning"
             else:
                 return message
         else:
