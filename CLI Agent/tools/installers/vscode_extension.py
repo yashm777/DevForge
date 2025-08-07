@@ -82,13 +82,19 @@ def install_extension(extension_id):
         install_command = [vscode_executable, "--install-extension", extension_id, "--force"]
         subprocess.run(install_command, check=True, shell=True, capture_output=True, text=True)
         
-        # Add a delay and retry mechanism for verification
-        for i in range(3):
-            time.sleep(5)  # Wait 5 seconds for the extension to install
+        # Retry mechanism for verification
+        for _ in range(5):  # Retry up to 5 times
+            time.sleep(3)  # Wait 3 seconds between retries
             extensions_after = get_installed_extensions()
-            if any(extension_id.lower() == ext.lower() for ext in extensions_after):
+            newly_installed = extensions_after - extensions_before
+
+            if any(extension_id.lower() == ext.lower() for ext in newly_installed):
                 return {"status": "Success", "message": f"Extension '{extension_id}' installed and verified successfully."}
-        
+            
+            # Also check if it's in the full list, in case it was installed before but not detected
+            if any(extension_id.lower() == ext.lower() for ext in extensions_after):
+                return {"status": "Success", "message": f"Extension '{extension_id}' is present after installation attempt."}
+
         return {"status": "Error", "message": f"Installation of '{extension_id}' failed verification."}
 
     except subprocess.CalledProcessError as e:
@@ -121,13 +127,13 @@ def uninstall_extension(extension_id):
         uninstall_command = [vscode_executable, "--uninstall-extension", extension_id]
         subprocess.run(uninstall_command, check=True, shell=True, capture_output=True, text=True)
         
-        # Add a delay and retry mechanism for verification
-        for i in range(3):
-            time.sleep(2)  # Wait 2 seconds
+        # Retry mechanism for verification
+        for _ in range(5): # Retry up to 5 times
+            time.sleep(3) # Wait 3 seconds
             extensions_after = get_installed_extensions()
             if not any(extension_id.lower() == ext.lower() for ext in extensions_after):
                 return {"status": "Success", "message": f"Extension '{extension_id}' uninstalled and verified successfully."}
-        
+
         return {"status": "Error", "message": f"Uninstallation of '{extension_id}' failed verification."}
 
     except subprocess.CalledProcessError as e:
