@@ -1,6 +1,19 @@
 import subprocess
 import sys
 import os
+import logging
+
+def setup_logging():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        handlers=[
+            logging.FileHandler("vscode_extension.log"),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+
+setup_logging()
 
 def find_vscode_executable():
     """Find the path to the VSCode executable, prioritizing official locations over PATH."""
@@ -64,7 +77,7 @@ def install_extension(extension_id):
     if any(extension_id.lower() == ext.lower() for ext in extensions_before):
         return {"status": "Success", "message": f"Extension '{extension_id}' is already installed."}
 
-    print(f"Attempting to install '{extension_id}' with verbose logging for diagnostics...")
+    logging.info(f"Attempting to install '{extension_id}' with verbose logging for diagnostics...")
 
     try:
         # --- Platform-Specific Command ---
@@ -79,10 +92,10 @@ def install_extension(extension_id):
             env["NODE_TLS_REJECT_UNAUTHORIZED"] = "0"
             # We will now intentionally capture and print the output for diagnosis
             result = subprocess.run(install_command, check=True, capture_output=True, text=True, env=env)
-            print("--- VSCode Verbose Output ---")
-            print(result.stdout)
-            print(result.stderr)
-            print("-----------------------------")
+            logging.info("--- VSCode Verbose Output ---")
+            logging.info(result.stdout)
+            logging.info(result.stderr)
+            logging.info("-----------------------------")
         
         # --- Verification Logic ---
         extensions_after = get_installed_extensions()
@@ -146,7 +159,7 @@ def uninstall_extension(extension_id):
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        print("Usage: python vscode_extension.py <install|uninstall> <extension_id>")
+        logging.info("Usage: python vscode_extension.py <install|uninstall> <extension_id>")
         sys.exit(1)
     
     action = sys.argv[1].lower()
@@ -157,9 +170,9 @@ if __name__ == "__main__":
     elif action == "uninstall":
         result = uninstall_extension(extension_id)
     else:
-        print("Invalid action. Use 'install' or 'uninstall'.")
+        logging.info("Invalid action. Use 'install' or 'uninstall'.")
         sys.exit(1)
         
-    print(result["message"])
+    logging.info(result["message"])
     if result["status"] == "Error":
         sys.exit(1)
