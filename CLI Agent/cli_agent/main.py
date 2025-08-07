@@ -28,7 +28,12 @@ mcp_client = None
 def format_result(result: Dict[str, Any]) -> str:
     """Format the result object into a clean, readable string or table"""
     if isinstance(result, dict):
-        # Extract the actual message from the result
+        # Check for message in details
+        if "details" in result and isinstance(result["details"], dict):
+            details_msg = result["details"].get("message", "")
+            if "Manual steps to add your SSH key to GitHub" in details_msg:
+                return details_msg
+        # Existing checks...
         if "result" in result and isinstance(result["result"], dict):
             inner_result = result["result"]
             # If it's a plain info dict (like system info), pretty print as table
