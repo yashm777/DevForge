@@ -224,7 +224,21 @@ def handle_git_setup(action, repo_url="", branch="", username="", email="", dest
                 username=username,
                 email=email,
                 dest_dir=dest_dir,
-                pat=pat  # <-- Add this line
+                pat=pat
+            )
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+    elif os_type == "darwin":  # macOS
+        try:
+            from tools.git_configurator.mac import perform_git_setup
+            return perform_git_setup(
+                action=action,
+                repo_url=repo_url,
+                branch=branch,
+                username=username,
+                email=email,
+                dest_dir=dest_dir,
+                pat=pat
             )
         except Exception as e:
             return {"status": "error", "message": str(e)}
