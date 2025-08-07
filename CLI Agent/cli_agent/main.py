@@ -45,10 +45,9 @@ def format_result(result: Dict[str, Any]) -> str:
                 msg = result["result"].get("message")
                 if msg:
                     return msg
-            return str(result)
+            # If nothing found, show a generic message for git actions
+            return "No message returned from git operation."
         # --- Default formatting for all other tools ---
-        # (your existing formatting logic here)
-        # Example:
         status = result.get("status")
         message = result.get("message", "")
         if status == "success":
