@@ -26,43 +26,38 @@ app = typer.Typer(
 mcp_client = None
 
 def format_result(result: Dict[str, Any]) -> str:
-    """Format the result object into a clean, readable string or table"""
+    """Format the result object, but passthrough git_setup messages as-is."""
     if isinstance(result, dict):
-        # Extract the actual message from the result
-        if "result" in result and isinstance(result["result"], dict):
-            inner_result = result["result"]
-            # If it's a plain info dict (like system info), pretty print as table
-            if all(isinstance(v, (str, int, float)) for v in inner_result.values()):
-                table = Table(show_header=False, box=None)
-                for k, v in inner_result.items():
-                    table.add_row(f"[bold]{k}[/bold]", str(v))
-                return table
-            if "message" in inner_result:
-                return inner_result["message"]
-            elif "status" in inner_result:
-                status = inner_result["status"]
-                message = inner_result.get("message", "")
-                if status == "success":
-                    return f"✓ {message}" if message else "✓ Operation completed successfully"
-                elif status == "error":
-                    return f"✗ {message}" if message else "✗ Operation failed"
-                else:
-                    return message
-            else:
-                return str(inner_result)
-        elif "message" in result:
-            return result["message"]
-        elif "status" in result:
-            status = result["status"]
-            message = result.get("message", "")
-            if status == "success":
-                return f"✓ {message}" if message else "✓ Operation completed successfully"
-            elif status == "error":
-                return f"✗ {message}" if message else "✗ Operation failed"
-            else:
-                return message
+        # Only passthrough for git-related actions
+        git_actions = {"generate_ssh_key", "add_ssh_key", "clone", "check_ssh_key_auth"}
+        if result.get("action") in git_actions:
+            # Prefer details.message if present
+            if "details" in result and isinstance(result["details"], dict):
+                msg = result["details"].get("message")
+                if msg:
+                    return msg
+            # Fallback to result.message if present
+            if "result" in result and isinstance(result["result"], dict):
+                msg = result["result"].get("message")
+                if msg:
+                    return msg
+            # Fallback to top-level message
+            msg = result.get("message")
+            if msg:
+                return msg
+            # If nothing found, show a generic message for git actions
+            return "No message returned from git operation."
+        # --- Default formatting for all other tools ---
+        status = result.get("status")
+        message = result.get("message", "")
+        if status == "success":
+            return f"✓ {message}" if message else "✓ Operation completed successfully"
+        elif status == "error":
+            return f"✗ {message}" if message else "✗ Operation failed"
+        elif status == "warning":
+            return f"! {message}" if message else "! Warning"
         else:
-            return str(result)
+            return message or str(result)
     else:
         return str(result)
 
@@ -193,7 +188,23 @@ def run(
 
             # Default for all other tasks
             result = mcp_client.call_jsonrpc(method, params)
-            formatted_result = format_result(result)
+
+            # Custom handling for git_setup method
+            if method == "git_setup":
+                # Always extract the inner 'result' dict if present
+                if isinstance(result, dict) and "result" in result and isinstance(result["result"], dict):
+                    formatted_result = format_result(result["result"])
+                else:
+                    formatted_result = format_result(result)
+                console.print(Panel(formatted_result, title=f"Step {i}: {method}", border_style="green"))
+                continue
+
+            # For all other methods, assign formatted_result before printing
+            if isinstance(result, dict) and "result" in result and isinstance(result["result"], dict):
+                formatted_result = format_result(result["result"])
+            else:
+                formatted_result = format_result(result)
+
             console.print(Panel(formatted_result, title=f"Step {i}: {method}", border_style="green"))
 
     except Exception as e:

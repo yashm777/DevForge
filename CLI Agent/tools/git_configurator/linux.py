@@ -65,18 +65,17 @@ def generate_ssh_key(email: str, key_path: str = "~/.ssh/id_rsa"):
             "-f", key_path, "-N", ""
         ], check=True)
         logging.info("SSH key generated successfully.")
+        pub_key_path = key_path + ".pub"
+        if not os.path.exists(pub_key_path):
+            raise RuntimeError("Public key file not found after generation.")
+        with open(pub_key_path, "r") as pubkey_file:
+            pubkey = pubkey_file.read()
+        logging.info("\nYour new SSH public key:\n")
+        print(pubkey)
+        return {"status": "success", "message": f"SSH key generated at {key_path}"}
     else:
         logging.info(f"SSH key already exists at: {key_path}")
-
-    pub_key_path = key_path + ".pub"
-    if not os.path.exists(pub_key_path):
-        raise RuntimeError("Public key file not found after generation.")
-
-    with open(pub_key_path, "r") as pubkey_file:
-        pubkey = pubkey_file.read()
-    logging.info("\nYour new SSH public key:\n")
-    print(pubkey)
-    return f"SSH key generated at {key_path}"
+        return {"status": "warning", "message": f"SSH key already exists at {key_path}. Generation skipped."}
 
 
 def add_ssh_key_to_github_or_manual(email: str, pat: str = None, key_path: str = "~/.ssh/id_rsa"):
@@ -105,20 +104,22 @@ def add_ssh_key_to_github_or_manual(email: str, pat: str = None, key_path: str =
         else:
             manual_msg = (
                 f"❌ Failed to add SSH key via API: {response.text}\n"
-                "Manual steps to add your SSH key to GitHub:\n"
-                "1. Copy the public key below:\n"
-                f"{pubkey}\n"
-                "2. Go to https://github.com/settings/ssh/new\n"
-                "3. Paste the key and save."
+               "Manual steps to add your SSH key to GitHub:\n"
+            "1. Run the following command to display your public key:\n"
+            "   cat ~/.ssh/id_rsa.pub\n"
+            "2. Copy the output.\n"
+            "3. Go to https://github.com/settings/ssh/new\n"
+            "4. Paste the key and save."
             )
             return {"status": "warning", "message": manual_msg}
     else:
         manual_msg = (
             "Manual steps to add your SSH key to GitHub:\n"
-            "1. Copy the public key below:\n"
-            f"{pubkey}\n"
-            "2. Go to https://github.com/settings/ssh/new\n"
-            "3. Paste the key and save."
+            "1. Run the following command to display your public key:\n"
+            "   cat ~/.ssh/id_rsa.pub\n"
+            "2. Copy the output.\n"
+            "3. Go to https://github.com/settings/ssh/new\n"
+            "4. Paste the key and save."
         )
         return {"status": "success", "message": manual_msg}
 
@@ -210,8 +211,10 @@ def perform_git_setup(
         if action == "generate_ssh_key":
             if not email:
                 return {"status": "error", "message": "Email is required to generate SSH key."}
-            msg = generate_ssh_key(email)
-            return {"status": "success", "action": action, "details": {"message": msg, "email": email}}
+            result = generate_ssh_key(email)
+            result["action"] = action
+            result["details"] = {"email": email}
+            return result
 
         elif action == "clone":
             if not repo_url:
@@ -230,14 +233,14 @@ def perform_git_setup(
                 return {"status": "success", "action": action, "details": {"message": result}}
             else:
                 manual_msg = (
-                "Manual steps to add your SSH key to GitHub:\n"
-                "1. Run the following command to display your public key:\n"
-                "   cat ~/.ssh/id_rsa.pub\n"
-                "2. Copy the output.\n"
-                "3. Go to https://github.com/settings/ssh/new\n"
-                "4. Paste the key and save."
+                    "Manual steps to add your SSH key to GitHub:\n"
+                    "1. Run the following command to display your public key:\n"
+                    "   cat ~/.ssh/id_rsa.pub\n"
+                    "2. Copy the output.\n"
+                    "3. Go to https://github.com/settings/ssh/new\n"
+                    "4. Paste the key and save."
                 )
-                return {"status": "success", "action": action, "details": {"message": manual_msg}}
+                return {"status": "warning", "action": action, "details": {"message": manual_msg}}
 
         elif action == "check_ssh_key_auth":
             result = check_ssh_key_auth()
