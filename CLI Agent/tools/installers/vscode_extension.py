@@ -48,42 +48,69 @@ def get_installed_extensions():
 
 def install_extension(extension_id):
     """
-    Install a VSCode extension, with a curl fallback for stubborn Linux environments.
+    Installs a VSCode extension with a robust, platform-aware fallback mechanism.
+    It first tries the standard installation. If that fails, it uses curl with a
+    browser User-Agent to download the VSIX file and then installs it locally.
+    
+    Args:
+        extension_id (str): The ID of the extension to install (e.g., 'ms-python.python').
     """
     vscode_executable = find_vscode_executable()
     if not vscode_executable:
-        return {"status": "Error", "message": "VSCode is not installed or could not be found."}
+        print("Error: VSCode is not installed or could not be found.")
+        return
 
+    # Check if the extension is already installed
     if any(extension_id.lower() == ext.lower() for ext in get_installed_extensions()):
-        return {"status": "Success", "message": f"Extension '{extension_id}' is already installed."}
+        print(f"Info: Extension '{extension_id}' is already installed.")
+        return
 
     print(f"Attempting standard installation for '{extension_id}'...")
     
     try:
         # --- PRIMARY METHOD: Standard VS Code command ---
-        install_command = [vscode_executable, "--install-extension", extension_id]
-        subprocess.run(install_command, check=True, capture_output=True, text=True)
-        print(f"Standard installation successful for '{extension_id}'.")
-        return {"status": "Success", "message": f"Extension '{extension_id}' installed successfully."}
+        primary_command = [vscode_executable, "--install-extension", extension_id]
+        subprocess.run(primary_command, check=True, capture_output=True, text=True)
+        
+        print(f"Success: Extension '{extension_id}' installed successfully via the standard method.")
+        return
         
     except subprocess.CalledProcessError as e:
-        print(f"Standard installation failed: {e.stderr.strip()}. Attempting fallback method...")
-
-        # --- FALLBACK METHOD: Use curl to download and then install from VSIX file ---
-        # This part will only run on non-Windows systems if the primary method fails.
+        # --- FALLBACK TRIGGERED ---
+        print(f"Standard installation failed. Triggering fallback method...")
+        
+        # The fallback is only for non-windows systems
         if sys.platform == "win32":
-             return {"status": "Error", "message": f"Failed to install '{extension_id}'. Fallback not available for Windows."}
+             print("Error: Fallback method is not available for Windows.")
+             return
 
+        # Check if curl is installed
         if not shutil.which("curl"):
-            return {"status": "Error", "message": "Fallback failed: 'curl' command not found."}
+            print("Error: Fallback failed because 'curl' command is not installed.")
+            return
 
-        publisher, ext_name = extension_id.split('.')
+        # Construct the download URL and local file path
+        try:
+            publisher, ext_name = extension_id.split('.')
+        except ValueError:
+            print(f"Error: Invalid extension ID format '{extension_id}'.")
+            return
+            
         vsix_url = f"https://marketplace.visualstudio.com/_apis/public/gallery/publishers/{publisher}/vsextensions/{ext_name}/latest/vspackage"
         vsix_path = f"/tmp/{extension_id}.vsix"
+        
+        # Define a standard browser User-Agent to avoid being blocked
+        browser_user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36"
 
         try:
-            print(f"Fallback: Downloading from {vsix_url}...")
-            curl_command = ["curl", "-vL", vsix_url, "-o", vsix_path]
+            print(f"Fallback: Downloading from '{vsix_url}'...")
+            curl_command = [
+                "curl",
+                "--location", # Follow redirects
+                "--user-agent", browser_user_agent, # Pretend to be a browser
+                "--output", vsix_path, # Save to file
+                vsix_url
+            ]
             subprocess.run(curl_command, check=True, capture_output=True, text=True)
 
             print(f"Fallback: Installing from downloaded file '{vsix_path}'...")
@@ -92,14 +119,10 @@ def install_extension(extension_id):
             
             os.remove(vsix_path) # Clean up the downloaded file
 
-            if any(extension_id.lower() == ext.lower() for ext in get_installed_extensions()):
-                 print("Fallback installation successful and verified.")
-                 return {"status": "Success", "message": f"Extension '{extension_id}' installed successfully using fallback method."}
-            else:
-                 return {"status": "Error", "message": "Fallback installation failed during final verification."}
+            print(f"Success: Extension '{extension_id}' installed successfully using the fallback method.")
 
         except Exception as fallback_error:
-            return {"status": "Error", "message": f"The fallback installation method also failed. Error: {fallback_error}"}
+            print(f"Error: The fallback installation method also failed. Reason: {fallback_error}")
 
 def uninstall_extension(extension_id):
     """
