@@ -26,69 +26,39 @@ app = typer.Typer(
 mcp_client = None
 
 def format_result(result: Dict[str, Any]) -> str:
-    """Format the result object into a clean, readable string or table"""
+    """Format the result object, but passthrough git_setup messages as-is."""
     if isinstance(result, dict):
-        # Check for message in details
-        if "details" in result and isinstance(result["details"], dict):
-            details_msg = result["details"].get("message", "")
-            if "Manual steps to add your SSH key to GitHub" in details_msg:
-                return details_msg
-        # Existing checks...
-        if "result" in result and isinstance(result["result"], dict):
-            inner_result = result["result"]
-            # If it's a plain info dict (like system info), pretty print as table
-            if all(isinstance(v, (str, int, float)) for v in inner_result.values()):
-                table = Table(show_header=False, box=None)
-                for k, v in inner_result.items():
-                    table.add_row(f"[bold]{k}[/bold]", str(v))
-                return table
-            if "message" in inner_result:
-                # Show manual instructions as plain output if present
-                msg = inner_result["message"]
-                if "Manual steps to add your SSH key to GitHub" in msg:
+        # Only passthrough for git-related actions
+        git_actions = {"generate_ssh_key", "add_ssh_key", "clone", "check_ssh_key_auth"}
+        if result.get("action") in git_actions:
+            # Prefer details.message if present
+            if "details" in result and isinstance(result["details"], dict):
+                msg = result["details"].get("message")
+                if msg:
                     return msg
+            # Fallback to top-level message
+            msg = result.get("message")
+            if msg:
                 return msg
-            elif "status" in inner_result:
-                status = inner_result["status"]
-                message = inner_result.get("message", "")
-                if status == "success":
-                    # Show manual instructions as plain output if present
-                    if "Manual steps to add your SSH key to GitHub" in message:
-                        return message
-                    return f"✓ {message}" if message else "✓ Operation completed successfully"
-                elif status == "error":
-                    return f"✗ {message}" if message else "✗ Operation failed"
-                elif status == "warning":
-                    # Show manual instructions as plain output if present
-                    if "Manual steps to add your SSH key to GitHub" in message:
-                        return message
-                    return f"! {message}" if message else "! Warning"
-                else:
-                    return message
-            else:
-                return str(inner_result)
-        elif "message" in result:
-            msg = result["message"]
-            if "Manual steps to add your SSH key to GitHub" in msg:
-                return msg
-            return msg
-        elif "status" in result:
-            status = result["status"]
-            message = result.get("message", "")
-            if status == "success":
-                if "Manual steps to add your SSH key to GitHub" in message:
-                    return message
-                return f"✓ {message}" if message else "✓ Operation completed successfully"
-            elif status == "error":
-                return f"✗ {message}" if message else "✗ Operation failed"
-            elif status == "warning":
-                if "Manual steps to add your SSH key to GitHub" in message:
-                    return message
-                return f"! {message}" if message else "! Warning"
-            else:
-                return message
-        else:
+            # Fallback to result.message
+            if "result" in result and isinstance(result["result"], dict):
+                msg = result["result"].get("message")
+                if msg:
+                    return msg
             return str(result)
+        # --- Default formatting for all other tools ---
+        # (your existing formatting logic here)
+        # Example:
+        status = result.get("status")
+        message = result.get("message", "")
+        if status == "success":
+            return f"✓ {message}" if message else "✓ Operation completed successfully"
+        elif status == "error":
+            return f"✗ {message}" if message else "✗ Operation failed"
+        elif status == "warning":
+            return f"! {message}" if message else "! Warning"
+        else:
+            return message or str(result)
     else:
         return str(result)
 
