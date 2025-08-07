@@ -70,6 +70,8 @@ AVAILABLE_TOOLS = {
         "description": "Uninstall a VSCode extension",
         "params": {
             "tool_name": "The ID of the extension to uninstall (e.g., 'ms-python.python')"
+        }
+    },
     "git_setup": {
         "description": "Perform git-related tasks such as cloning, switching branches, generating SSH keys, adding SSH keys to GitHub, or checking SSH authentication.",
         "params": {
