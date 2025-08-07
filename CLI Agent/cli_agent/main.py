@@ -188,7 +188,10 @@ def run(
 
             # Default for all other tasks
             result = mcp_client.call_jsonrpc(method, params)
-            formatted_result = format_result(result)
+            if isinstance(result, dict) and "result" in result and isinstance(result["result"], dict):
+                formatted_result = format_result(result["result"])
+            else:
+                formatted_result = format_result(result)
             console.print(Panel(formatted_result, title=f"Step {i}: {method}", border_style="green"))
 
     except Exception as e:
