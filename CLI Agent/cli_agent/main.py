@@ -199,6 +199,12 @@ def run(
                 console.print(Panel(formatted_result, title=f"Step {i}: {method}", border_style="green"))
                 continue
 
+            # For all other methods, assign formatted_result before printing
+            if isinstance(result, dict) and "result" in result and isinstance(result["result"], dict):
+                formatted_result = format_result(result["result"])
+            else:
+                formatted_result = format_result(result)
+
             console.print(Panel(formatted_result, title=f"Step {i}: {method}", border_style="green"))
 
     except Exception as e:
