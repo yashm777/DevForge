@@ -47,7 +47,8 @@ def get_installed_extensions():
 
 def install_extension(extension_id):
     """
-    Install a VSCode extension and verify its installation by comparing extension lists.
+    Install a VSCode extension and verify its installation. This function is platform-aware
+    and handles Windows and Linux/macOS differently to ensure compatibility.
     
     Args:
         extension_id (str): The ID of the extension to install (e.g., 'ms-python.python').
@@ -68,10 +69,19 @@ def install_extension(extension_id):
 
     try:
         install_command = [vscode_executable, "--install-extension", extension_id, "--force"]
-        subprocess.run(install_command, check=True, shell=True, capture_output=True, text=True)
         
+        # --- Platform-Specific Logic ---
+        if sys.platform == "win32":
+            # WINDOWS: Keep the original command which is working
+            subprocess.run(install_command, check=True, shell=True, capture_output=True, text=True)
+        else:
+            # LINUX/MACOS: Remove shell=True and add SSL bypass environment variable
+            env = os.environ.copy()
+            env["NODE_TLS_REJECT_UNAUTHORIZED"] = "0"
+            subprocess.run(install_command, check=True, capture_output=True, text=True, env=env)
+        
+        # --- Verification Logic (remains the same) ---
         extensions_after = get_installed_extensions()
-
         newly_installed_extensions = extensions_after - extensions_before
 
         if any(extension_id.lower() == ext.lower() for ext in newly_installed_extensions):
@@ -83,7 +93,11 @@ def install_extension(extension_id):
         return {"status": "Error", "message": f"Installation of '{extension_id}' failed verification."}
 
     except subprocess.CalledProcessError as e:
-        return {"status": "Error", "message": f"Failed to install extension '{extension_id}'. Error: {e.stderr.strip()}"}
+        # Provide a more detailed error message
+        error_message = e.stderr.strip() if e.stderr else "No error output."
+        if "CERT_HAS_EXPIRED" in error_message or "unable to verify the first certificate" in error_message:
+            error_message += "\nThis might be an SSL/TLS certificate issue. Ensure your system's certificates are up to date."
+        return {"status": "Error", "message": f"Failed to install extension '{extension_id}'. Error: {error_message}"}
     except FileNotFoundError:
         return {"status": "Error", "message": "The 'code' command is not available."}
 
