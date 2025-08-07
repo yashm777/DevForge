@@ -40,7 +40,7 @@ def get_installed_extensions():
     
     try:
         command = [vscode_executable, "--list-extensions"]
-        result = subprocess.run(command, check=True, shell=True, capture_output=True, text=True)
+        result = subprocess.run(command, check=True, capture_output=True, text=True)
         return set(result.stdout.strip().split('\n'))
     except (FileNotFoundError, subprocess.CalledProcessError):
         return set()
