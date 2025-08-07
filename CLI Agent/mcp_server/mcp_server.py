@@ -13,6 +13,7 @@ from tools.code_generator import generate_code
 from tools.installers.mac import install_mac_tool
 from tools.installers.windows import install_windows_tool, install_windows_tool_by_id
 from tools.installers.linux import install_linux_tool
+from tools.installers.vscode_extension import install_extension as install_vscode_extension_tool, uninstall_extension as uninstall_vscode_extension_tool
 from tools.uninstallers.mac import uninstall_mac_tool
 from tools.uninstallers.windows import uninstall_windows_tool
 from tools.uninstallers.linux import uninstall_linux_tool
@@ -52,12 +53,34 @@ app = FastAPI()
 def install_tool(tool, version="latest"):
     add_log_entry("INFO", f"Install request for tool: {tool} (version: {version})")
     os_type = platform.system().lower()
+    
+    # Handle Linux-to-Windows package mapping
     if os_type == "windows":
-        result = install_windows_tool(tool, version)
+        # Map Linux package names to Windows package IDs
+        linux_to_windows = {
+            "docker.io": "Docker.DockerDesktop",
+            "slack-desktop": "SlackTechnologies.Slack",
+            "intellij-idea-community": "JetBrains.IntelliJIDEA.Community",
+            "pycharm-community": "JetBrains.PyCharm.Community",
+            "vscode": "Microsoft.VisualStudioCode",
+            "code": "Microsoft.VisualStudioCode",
+            "nodejs": "OpenJS.NodeJS",
+            "python3": "Python.Python.3",
+            "default-jdk": "Oracle.JDK",
+            "eclipse": "Eclipse.IDE",
+            "neovim": "Neovim.Neovim"
+        }
+        
+        if tool in linux_to_windows:
+            mapped_tool = linux_to_windows[tool]
+            add_log_entry("INFO", f"Mapped Linux package '{tool}' to Windows package '{mapped_tool}'")
+            result = install_windows_tool_by_id(mapped_tool, version)
+        else:
+            result = install_windows_tool(tool, version)
     elif os_type == "darwin":
         result = install_mac_tool(tool, version)
     elif os_type == "linux":
-        result = install_linux_tool(tool,version)
+        result = install_linux_tool(tool, version)
     else:
         result = {"status": "error", "message": f"Unsupported OS: {os_type}"}
     
@@ -220,7 +243,6 @@ task_handlers = {
     "install_vscode_extension": install_vscode_extension,
     "uninstall_vscode_extension": uninstall_vscode_extension,
     "git_setup": handle_git_setup,
-
 }
 
 @app.post("/mcp/")

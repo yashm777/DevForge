@@ -83,6 +83,7 @@ AVAILABLE_TOOLS = {
             "email": "Email address (optional, for generate_ssh_key, add_ssh_key, switch_branch)",
             "pat": "GitHub Personal Access Token (optional, for add_ssh_key)"
         }
+
     }
 
 }

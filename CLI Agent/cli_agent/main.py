@@ -271,6 +271,13 @@ def run(
         if isinstance(parsed, dict) and "error" in parsed:
             console.print(f"[red]Error parsing command: {parsed['error']}[/red]")
             return
+            
+        # Handle special case when parser returns a manual URL
+        if isinstance(parsed, dict) and "manual_url" in parsed and not parsed.get("method"):
+            url = parsed["manual_url"]
+            console.print(f"[yellow]The tool '{command.split()[1] if len(command.split()) > 1 else command}' requires manual installation.[/yellow]")
+            console.print(f"[blue]Please download from: {url}[/blue]")
+            return
 
         if isinstance(parsed, dict):
             parsed = [parsed]
@@ -278,8 +285,6 @@ def run(
         for i, action_item in enumerate(parsed, start=1):
             method = action_item.get("method")
             params = action_item.get("params", {})
-
-            console.print(f"[cyan]Executing Step {i}: {method}[/cyan]")
 
             # Special case for installs
             if params.get("task") == "install":
@@ -400,89 +405,97 @@ def run(
                             console.print("[red]Invalid input or cancelled. Aborting.[/red]")
                     else:
                         console.print("[red]No package options found in ambiguous result.[/red]")
-                else:
-                    formatted_result = format_result(result)
-                    display_name = get_display_name(tool_name)
+               else:
+    formatted_result = format_result(result)
+    display_name = get_display_name(tool_name)
+    
+    # Check if this is a Mac Java installation (simple detection)
+    is_mac_java = (tool_name in ["java", "default-jdk"] and 
+                 isinstance(result, dict) and "result" in result and
+                 isinstance(result["result"], dict) and
+                 any('/opt/homebrew/' in str(v) for v in result["result"].values()))
+    
+    if is_mac_java:
+        # Extract JAVA_HOME path for Mac
+        java_home_path = None
+        for k, v in result["result"].items():
+            if isinstance(v, str) and '/opt/homebrew/Cellar/openjdk' in v:
+                match = re.search(r'/opt/homebrew/Cellar/openjdk@?\d*/[^/\s]+/libexec/openjdk\.jdk/Contents/Home', v)
+                if match:
+                    java_home_path = match.group(0)
+                    break
+        
+        if java_home_path:
+            clean_status = format_result(result, is_mac_java_check=True)
+            console.print(Panel(clean_status, title=f"Step {i}: Install {display_name}", border_style="green"))
+            
+            console.print(f"\n[bold cyan]🔧 Updating shell configuration automatically...[/bold cyan]")
+            
+            try:
+                subprocess.run([
+                    'sed', '-i', '', 
+                    's/^export JAVA_HOME="\\/opt\\/homebrew\\/opt\\/openjdk"/# Java 24 (old) - export JAVA_HOME="\\/opt\\/homebrew\\/opt\\/openjdk"/',
+                    os.path.expanduser('~/.zshrc')
+                ], check=True, capture_output=True)
+                
+                subprocess.run([
+                    'sed', '-i', '',
+                    's/^export PATH="\\/opt\\/homebrew\\/opt\\/openjdk\\/bin:/# Java 24 (old) - export PATH="\\/opt\\/homebrew\\/opt\\/openjdk\\/bin:/',
+                    os.path.expanduser('~/.zshrc')
+                ], check=True, capture_output=True)
+                
+                with open(os.path.expanduser('~/.zshrc'), 'a') as f:
+                    version_match = re.search(r'openjdk@?(\d+)', java_home_path)
+                    version_label = version_match.group(1) if version_match else "current"
                     
-                    # Check if this is a Mac Java installation (simple detection)
-                    is_mac_java = (tool_name in ["java", "default-jdk"] and 
-                                 isinstance(result, dict) and "result" in result and
-                                 isinstance(result["result"], dict) and
-                                 any('/opt/homebrew/' in str(v) for v in result["result"].values()))
-                    
-                    if is_mac_java:
-                        # Extract JAVA_HOME path for Mac
-                        java_home_path = None
-                        for k, v in result["result"].items():
-                            if isinstance(v, str) and '/opt/homebrew/Cellar/openjdk' in v:
-                                # Extract the full path to openjdk.jdk/Contents/Home
-                                match = re.search(r'/opt/homebrew/Cellar/openjdk@?\d*/[^/\s]+/libexec/openjdk\.jdk/Contents/Home', v)
-                                if match:
-                                    java_home_path = match.group(0)
-                                    break
-                        
-                        if java_home_path:
-                            # For Mac Java installs, show clean status and separate commands
-                            clean_status = format_result(result, is_mac_java_check=True)
-                            console.print(Panel(clean_status, title=f"Step {i}: Install {display_name}", border_style="green"))
-                            
-                            # Automatically update the zshrc file
-                            console.print(f"\n[bold cyan]� Updating shell configuration automatically...[/bold cyan]")
-                            
-                            try:
-                                # Comment out old Java configuration
-                                subprocess.run([
-                                    'sed', '-i', '', 
-                                    's/^export JAVA_HOME="\\/opt\\/homebrew\\/opt\\/openjdk"/# Java 24 (old) - export JAVA_HOME="\\/opt\\/homebrew\\/opt\\/openjdk"/',
-                                    os.path.expanduser('~/.zshrc')
-                                ], check=True, capture_output=True)
-                                
-                                subprocess.run([
-                                    'sed', '-i', '',
-                                    's/^export PATH="\\/opt\\/homebrew\\/opt\\/openjdk\\/bin:/# Java 24 (old) - export PATH="\\/opt\\/homebrew\\/opt\\/openjdk\\/bin:/',
-                                    os.path.expanduser('~/.zshrc')
-                                ], check=True, capture_output=True)
-                                
-                                # Add Java configuration with dynamic version detection
-                                with open(os.path.expanduser('~/.zshrc'), 'a') as f:
-                                    # Extract version number from java_home_path for labeling
-                                    version_match = re.search(r'openjdk@?(\d+)', java_home_path)
-                                    version_label = version_match.group(1) if version_match else "current"
-                                    
-                                    f.write(f'\n# Java {version_label} (current)\n')
-                                    f.write(f'export JAVA_HOME={java_home_path}\n')
-                                    f.write(f'export PATH="{java_home_path}/bin:$PATH"\n')
-                                
-                                console.print("Shell configuration updated successfully")
-                                console.print(f"\n[bold yellow]Final step - Copy and run this command:[/bold yellow]")
-                                print(f"\033[32msource ~/.zshrc\033[0m")
-                                console.print("")
-                                
-                            except Exception as e:
-                                console.print(f"[red]Error updating shell configuration: {e}[/red]")
-                                console.print(f"\n[bold cyan]Please run these commands manually:[/bold cyan]")
-                                
-                                # Extract version for manual commands
-                                version_match = re.search(r'openjdk@?(\d+)', java_home_path)
-                                version_label = version_match.group(1) if version_match else "current"
-                                
-                                print(f"\033[32m# Comment out old Java configuration\033[0m")
-                                print(f"\033[32msed -i '' 's/^export JAVA_HOME=\"\\/opt\\/homebrew\\/opt\\/openjdk\"/# Java 24 (old) - export JAVA_HOME=\"\\/opt\\/homebrew\\/opt\\/openjdk\"/' ~/.zshrc\033[0m")
-                                print(f"\033[32msed -i '' 's/^export PATH=\"\\/opt\\/homebrew\\/opt\\/openjdk\\/bin:/# Java 24 (old) - export PATH=\"\\/opt\\/homebrew\\/opt\\/openjdk\\/bin:/' ~/.zshrc\033[0m")
-                                print(f"\033[32m# Add Java {version_label} configuration\033[0m")
-                                print(f"\033[32mecho '# Java {version_label} (current)' >> ~/.zshrc\033[0m")
-                                print(f"\033[32mecho 'export JAVA_HOME={java_home_path}' >> ~/.zshrc\033[0m")
-                                print(f"\033[32mecho 'export PATH=\"{java_home_path}/bin:$PATH\"' >> ~/.zshrc\033[0m")
-                                print(f"\033[32msource ~/.zshrc\033[0m")
-                                console.print("")
-                        else:
-                            # Fallback to default display
-                            console.print(Panel(formatted_result, title=f"Step {i}: Install {display_name}", border_style="green"))
-                    else:
-                        # Default behavior for non-Mac or non-Java installs
-                        console.print(Panel(formatted_result, title=f"Step {i}: Install {display_name}", border_style="green"))
+                    f.write(f'\n# Java {version_label} (current)\n')
+                    f.write(f'export JAVA_HOME={java_home_path}\n')
+                    f.write(f'export PATH="{java_home_path}/bin:$PATH"\n')
+                
+                console.print("Shell configuration updated successfully")
+                console.print(f"\n[bold yellow]Final step - Copy and run this command:[/bold yellow]")
+                print(f"\033[32msource ~/.zshrc\033[0m\n")
+                
+            except Exception as e:
+                console.print(f"[red]Error updating shell configuration: {e}[/red]")
+                console.print(f"\n[bold cyan]Please run these commands manually:[/bold cyan]")
+                
+                version_match = re.search(r'openjdk@?(\d+)', java_home_path)
+                version_label = version_match.group(1) if version_match else "current"
+                
+                print(f"\033[32m# Comment out old Java configuration\033[0m")
+                print(f"\033[32msed -i '' 's/^export JAVA_HOME=\"\\/opt\\/homebrew\\/opt\\/openjdk\"/# Java 24 (old) - export JAVA_HOME=\"\\/opt\\/homebrew\\/opt\\/openjdk\"/' ~/.zshrc\033[0m")
+                print(f"\033[32msed -i '' 's/^export PATH=\"\\/opt\\/homebrew\\/opt\\/openjdk\\/bin:/# Java 24 (old) - export PATH=\"\\/opt\\/homebrew\\/opt\\/openjdk\\/bin:/' ~/.zshrc\033[0m")
+                print(f"\033[32m# Add Java {version_label} configuration\033[0m")
+                print(f"\033[32mecho '# Java {version_label} (current)' >> ~/.zshrc\033[0m")
+                print(f"\033[32mecho 'export JAVA_HOME={java_home_path}' >> ~/.zshrc\033[0m")
+                print(f"\033[32mecho 'export PATH=\"{java_home_path}/bin:$PATH\"' >> ~/.zshrc\033[0m")
+                print(f"\033[32msource ~/.zshrc\033[0m\n")
+        else:
+            console.print(Panel(formatted_result, title=f"Step {i}: Install {display_name}", border_style="green"))
+    else:
+        console.print(Panel(formatted_result, title=f"Step {i}: Install {display_name}", border_style="green"))
 
-                continue
+# VSCode extension install logic (from test_4)
+if method == "install_vscode_extension":
+    extension_id = params.get("extension_id") or params.get("tool_name")
+    result = mcp_client.call_jsonrpc("tool_action_wrapper", {
+        "task": "install_vscode_extension",
+        "extension_id": extension_id
+    })
+    formatted_result = format_result(result)
+    console.print(Panel(formatted_result, title=f"Install VSCode Extension", border_style="green"))
+    continue
+
+if method == "uninstall_vscode_extension":
+    extension_id = params.get("extension_id") or params.get("tool_name")
+    result = mcp_client.call_jsonrpc("uninstall_vscode_extension", {
+        "extension_id": extension_id
+    })
+    formatted_result = format_result(result)
+    console.print(Panel(formatted_result, title=f"Uninstall VSCode Extension", border_style="green"))
+    continue
+
 
             # Code generation case
             if method == "generate_code":
@@ -661,4 +674,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
