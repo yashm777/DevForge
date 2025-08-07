@@ -16,13 +16,15 @@ from tools.installers.linux import install_linux_tool
 from tools.installers.vscode_extension import install_extension as install_vscode_extension_tool, uninstall_extension as uninstall_vscode_extension_tool
 from tools.uninstallers.mac import uninstall_mac_tool
 from tools.uninstallers.windows import uninstall_windows_tool
-from tools.uninstallers.linux import uninstall_tool_linux
-from tools.version_checkers.mac import check_version as check_version_mac
+from tools.uninstallers.linux import uninstall_linux_tool
+from tools.version_checkers.mac import check_version_mac_tool
+from tools.uninstallers.linux import uninstall_linux_tool
 from tools.version_checkers.windows import check_version as check_version_windows
 from tools.version_checkers.linux import check_version as check_version_linux
-from tools.upgraders.mac import handle_tool_mac
+from tools.upgraders.mac import upgrade_mac_tool
 from tools.upgraders.windows import handle_tool
 from tools.upgraders.linux import handle_tool
+from tools.installers.vscode_extension import install_extension as install_vscode_extension_tool, uninstall_extension as uninstall_vscode_extension_tool
 import traceback
 
 # Configure logging
@@ -109,7 +111,7 @@ def uninstall_tool(tool):
     elif os_type == "darwin":
         result = uninstall_mac_tool(tool)
     elif os_type == "linux":
-        result = uninstall_tool_linux(tool)
+        result = uninstall_linux_tool(tool)
     else:
         result = {"status": "error", "message": f"Unsupported OS: {os_type}"}
     
@@ -136,7 +138,7 @@ def check_version(tool, version="latest"):
     if os_type == "windows":
         result = check_version_windows(tool, version)
     elif os_type == "darwin":
-        result = check_version_mac(tool, version)
+        result = check_version_mac_tool(tool, version)
     elif os_type == "linux":
         result = check_version_linux(tool, version)
     else:
@@ -151,7 +153,7 @@ def upgrade_tool(tool, version="latest"):
     if os_type == "windows":
         result = handle_tool(tool, version)
     elif os_type == "darwin":
-        result = handle_tool_mac(tool, version)
+        result = upgrade_mac_tool(tool, version)
     elif os_type == "linux":
         result = handle_tool(tool, version)
     else:
@@ -209,6 +211,26 @@ def handle_system_config(tool, action="check", value=None):
         return {"status": "error", "message": f"Unknown system_config action: {action}"}
 
 
+# Add this function to handle git_setup
+def handle_git_setup(action, repo_url="", branch="", username="", email="", dest_dir="", pat=""):
+    os_type = platform.system().lower()
+    if os_type == "linux":
+        try:
+            from tools.git_configurator.linux import perform_git_setup
+            return perform_git_setup(
+                action=action,
+                repo_url=repo_url,
+                branch=branch,
+                username=username,
+                email=email,
+                dest_dir=dest_dir,
+                pat=pat  # <-- Add this line
+            )
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+    else:
+        return {"status": "error", "message": f"Git setup is not supported on OS: {os_type}"}
+
 # Task dispatch dictionary
 task_handlers = {
     "install": install_tool,
@@ -220,6 +242,7 @@ task_handlers = {
     "system_config": handle_system_config,
     "install_vscode_extension": install_vscode_extension,
     "uninstall_vscode_extension": uninstall_vscode_extension,
+    "git_setup": handle_git_setup,
 }
 
 @app.post("/mcp/")
@@ -254,6 +277,15 @@ async def mcp_endpoint(request: Request):
                 elif task == "uninstall_vscode_extension":
                     extension_id = params.get("extension_id") or params.get("tool_name")
                     result = handler(extension_id)
+                elif task == "git_setup":
+                    action = params.get("action")
+                    repo_url = params.get("repo_url", "")
+                    branch = params.get("branch", "")
+                    username = params.get("username", "")
+                    email = params.get("email", "")
+                    dest_dir = params.get("dest_dir", "")
+                    pat = params.get("pat", "")
+                    result = handler(action, repo_url, branch, username, email, dest_dir, pat)
                 else:
                     tool = params.get("tool_name")
                     version = params.get("version", "latest")

@@ -1,166 +1,90 @@
-import shutil
-import subprocess
-import logging
-import os
+"""
+Mac Tool Version Checker
 
+This file provides a clean interface for checking tool versions on Mac.
+It uses the comprehensive MacToolManager for all version detection logic.
+"""
+
+import logging
+from tools.utils.mac_tool_manager import get_manager
+from tools.utils.name_resolver import resolve_tool_name
+
+# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def find_executable(tool_name: str) -> str:
+def check_version_mac_tool(tool_name, version="latest"):
     """
-    Find the full path of an executable, checking aliases and common locations.
+    Check what version of a tool is installed and active.
+    
+    Args:
+        tool_name: The name of the tool to check (like "python", "docker", etc.)
+        version: Not used in version checking, kept for API compatibility
+    
+    Returns:
+        Dictionary with status, message, version, and details
     """
-    tool_aliases = {
-        "python": ["python3", "python"],
-        "pip": ["pip3", "pip"],
-        "node": ["node", "nodejs"],
-        "java": ["java", "jdk"],
-    }
+    logger.info(f"Starting Mac version check: {tool_name}")
     
-    possible_names = tool_aliases.get(tool_name, [tool_name])
-    
-    for name in possible_names:
-        executable_path = shutil.which(name)
-        if executable_path:
-            return executable_path
+    try:
+        # Resolve tool name for Mac system (handles Linux package names)
+        resolved = resolve_tool_name(tool_name, "darwin", version, "version_check")
+        resolved_tool_name = resolved["name"]
+        logger.info(f"Resolved '{tool_name}' to '{resolved_tool_name}' for Mac version check")
+        
+        # Use the comprehensive tool manager for all version checking
+        manager = get_manager()
+        result = manager.check_version(resolved_tool_name)
+        
+        if result.get("status") == "success":
+            # Format the success response for backward compatibility
+            message = f"{tool_name} is installed - version {result['version']}"
             
-    common_paths = [
-        "/usr/local/bin",
-        "/opt/homebrew/bin",
-        os.path.expanduser("~/.local/bin")
-    ]
-    
-    for path in common_paths:
-        for name in possible_names:
-            full_path = os.path.join(path, name)
-            if os.path.isfile(full_path) and os.access(full_path, os.X_OK):
-                return full_path
-                
-    return None
-
-import shutil
-import subprocess
-import logging
-import os
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-def find_executable(tool_name: str) -> str:
-    """
-    Find the full path of an executable, checking aliases and common locations.
-    """
-    tool_aliases = {
-        "python": ["python3", "python"],
-        "pip": ["pip3", "pip"],
-        "node": ["node", "nodejs"],
-        "java": ["java", "jdk"],
-    }
-    
-    possible_names = tool_aliases.get(tool_name, [tool_name])
-    
-    for name in possible_names:
-        executable_path = shutil.which(name)
-        if executable_path:
-            return executable_path
-            
-    common_paths = [
-        "/usr/local/bin",
-        "/opt/homebrew/bin",
-        os.path.expanduser("~/.local/bin")
-    ]
-    
-    for path in common_paths:
-        for name in possible_names:
-            full_path = os.path.join(path, name)
-            if os.path.isfile(full_path) and os.access(full_path, os.X_OK):
-                return full_path
-                
-    return None
-
-def check_version(tool_name: str, version: str = "latest") -> dict:
-    """
-    Check the version of a tool on macOS, with dynamic fallback for Python modules.
-    """
-    # First, try to find the tool as a standard executable
-    executable_path = find_executable(tool_name)
-    if executable_path:
-        try:
-            version_commands = [
-                [executable_path, "--version"],
-                [executable_path, "-v"],
-                [executable_path, "-V"],
-                [executable_path, "version"]
-            ]
-            for cmd in version_commands:
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=10, check=True)
-                if result.stdout.strip():
-                    return {
-                        "status": "success",
-                        "message": f"Version information for {tool_name}",
-                        "version": result.stdout.strip(),
-                        "command": " ".join(cmd)
-                    }
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
-            # If executable found but version commands fail, proceed to other methods
-            pass
-
-    # If not found or version check failed, try running as a Python module
-    for py_exec in ["python3", "python"]:
-        if shutil.which(py_exec):
-            try:
-                # Use the tool name directly as the module name
-                cmd = [py_exec, "-m", tool_name, "--version"]
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=10, check=True)
-                if result.stdout.strip():
-                    return {
-                        "status": "success",
-                        "message": f"Version information for {tool_name} (via Python module)",
-                        "version": result.stdout.strip(),
-                        "command": " ".join(cmd),
-                    }
-            except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-                # For 'idle', the module is 'idlelib'
-                if tool_name == "idle":
-                    try:
-                        cmd = [py_exec, "-m", "idlelib", "--version"]
-                        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10, check=True)
-                        if result.stdout.strip():
-                           return {
-                               "status": "success",
-                               "message": f"Version information for {tool_name} (via Python module)",
-                               "version": result.stdout.strip(),
-                               "command": " ".join(cmd),
-                           }
-                    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-                        continue
-                else:
-                    continue
-
-    # If still not found, try Homebrew
-    if shutil.which("brew"):
-        try:
-            brew_cmd = ["brew", "list", "--versions", tool_name]
-            result = subprocess.run(brew_cmd, capture_output=True, text=True, timeout=10, check=True)
-            if result.stdout.strip():
-                return {
-                    "status": "success",
-                    "message": f"Version information for {tool_name} (Homebrew)",
-                    "version": result.stdout.strip(),
-                    "source": "homebrew"
+            return {
+                "status": "success",
+                "message": message,
+                "version": result["version"],
+                "display_name": tool_name,  # Original tool name for CLI display
+                "resolved_name": resolved_tool_name,  # Actual resolved name used
+                "details": {
+                    "requested_tool": tool_name,
+                    "resolved_tool": resolved_tool_name,
+                    "package_type": result.get("package_type", "unknown"),
+                    "is_upgradable": result.get("is_upgradable", False),
+                    "version_details": result.get("raw_output", f"Version {result['version']}"),
+                    "source": result.get("source", "unknown"),
+                    "is_system_python": result.get("is_system_python", False),
+                    "in_virtualenv": result.get("in_virtualenv", False),
+                    "system_python_version": result.get("system_python_version", result["version"])
                 }
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-            pass
+            }
+        else:
+            # Tool not found or error
+            message = result.get("message", f"{tool_name} is not installed or not found")
+            return {
+                "status": "error",
+                "message": message,
+                "details": {"requested_tool": tool_name}
+            }
+            
+    except Exception as e:
+        logger.error(f"Version check failed for {tool_name}: {e}")
+        return {
+            "status": "error",
+            "message": f"Version check failed: {str(e)}",
+            "details": {"requested_tool": tool_name, "error": str(e)}
+        }
 
-    return {
-        "status": "error",
-        "message": f"{tool_name} is not installed, not in PATH, or its version could not be determined."
-    }
+if __name__ == "__main__":
+    import sys
 
-# Legacy function for backward compatibility
-def version_tool_mac(tool_name: str, version: str = "latest") -> dict:
-    return check_version(tool_name, version)
+    if len(sys.argv) < 2:
+        print("Usage: python mac.py <tool_name>")
+        sys.exit(1)
 
-# Legacy function for backward compatibility
-def version_tool_mac(tool_name: str, version: str = "latest") -> dict:
-    return check_version(tool_name, version) 
+    tool = sys.argv[1]
+    result = check_version_mac_tool(tool)
+    if result.get("status") == "success":
+        print(f"{tool} version: {result['version']}")
+    else:
+        print(f"Could not determine version of {tool}: {result.get('message', 'Unknown error')}")

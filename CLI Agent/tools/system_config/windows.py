@@ -199,4 +199,3 @@ def remove_from_path(dir_to_remove, scope="user"):
         return {"status": "success", "message": f"Removed {dir_to_remove} from PATH"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
-

@@ -61,3 +61,4 @@ def test_list_env_variables():
     result = windows.list_env_variables()
     assert result["status"] == "success"
     assert isinstance(result["variables"], dict)
+

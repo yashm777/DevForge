@@ -73,26 +73,45 @@ def resolve_tool_name(raw_name: str, os_type: str, version: str = "latest", cont
         }
 
     elif os_type == "darwin":
-        if normalized == "python":
+        if normalized == "python" or normalized == "python3":
             if context == "version_check":
                 return {"name": "python3", "fallback": None, "classic_snap": False}
             if version != "latest":
                 return {"name": f"python@{version}", "fallback": None, "classic_snap": False}
             return {"name": "python@3.11", "fallback": "Falling back to python@3.11", "classic_snap": False}
 
-        elif normalized == "java":
+        elif normalized == "java" or normalized == "default-jdk":
             if context == "version_check":
                 return {"name": "java", "fallback": None, "classic_snap": False}
+            return {"name": "openjdk", "fallback": None, "classic_snap": False}
+        
+        # Handle versioned Java packages (openjdk-XX-jdk -> openjdk@XX)
+        elif normalized.startswith("openjdk-") and normalized.endswith("-jdk"):
+            # Extract version number from openjdk-17-jdk format
+            try:
+                version_part = normalized[8:-4]  # Remove "openjdk-" and "-jdk"
+                if version_part.isdigit():
+                    return {"name": f"openjdk@{version_part}", "fallback": None, "classic_snap": False}
+            except:
+                pass
+            # Fallback to default openjdk if parsing fails
             return {"name": "openjdk", "fallback": None, "classic_snap": False}
 
         name_map = {
             "node": "node",
-            "nodejs": "node",
+            "nodejs": "node", 
             "vscode": "visual-studio-code",
+            "code": "visual-studio-code",  # Handle both vscode -> code -> visual-studio-code
             "nvim": "neovim",
+            "neovim": "neovim",
             "docker": "docker",
+            "docker.io": "docker",  # Map Linux docker.io to Mac docker
+            "go": "go",  # Handle LLM's go -> golang transformation
+            "golang": "go",  # Map LLM's golang back to go executable
             "intellij": "intellij-idea-ce",
-            "pycharm": "pycharm-ce",
+            "intellij-idea-community": "intellij-idea-ce",  # Map Linux name to Mac name
+            "pycharm": "pycharm-ce", 
+            "pycharm-community": "pycharm-ce",  # Map Linux name to Mac name
             "eclipse": "eclipse-java"
         }
 
