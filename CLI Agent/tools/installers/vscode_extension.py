@@ -9,16 +9,12 @@ def _run_vscode_command(command):
     Runs a VSCode command with the necessary environment to force CLI mode.
     This prevents the GUI from opening unexpectedly.
     """
-    # Create a copy of the current environment and add VSCODE_CLI=1
-    # This is the official way to force the 'code' executable into CLI mode.
     cli_env = os.environ.copy()
     cli_env["VSCODE_CLI"] = "1"
-
-    # On non-Windows systems, we pass the modified environment.
-    # On Windows, this is not typically necessary, but it doesn't hurt.
+    
+    # We will not use check=True by default so we can inspect the output of failed commands.
     return subprocess.run(
         command,
-        check=True,
         capture_output=True,
         text=True,
         env=cli_env
@@ -35,24 +31,27 @@ def find_vscode_executable():
         for path in common_paths:
             if os.path.exists(path):
                 try:
-                    _run_vscode_command([path, "--version"])
-                    return path
-                except (FileNotFoundError, subprocess.CalledProcessError):
+                    result = _run_vscode_command([path, "--version"])
+                    if result.returncode == 0:
+                        return path
+                except FileNotFoundError:
                     continue
     elif sys.platform.startswith("linux"):
         # Check standard path first
         if shutil.which("code"):
             try:
-                _run_vscode_command(["code", "--version"])
-                return "code"
-            except (FileNotFoundError, subprocess.CalledProcessError):
+                result = _run_vscode_command(["code", "--version"])
+                if result.returncode == 0:
+                    return "code"
+            except FileNotFoundError:
                 pass
         # Check for snap path as a fallback
         snap_path = "/snap/bin/code"
         if os.path.exists(snap_path):
              try:
-                _run_vscode_command([snap_path, "--version"])
-                return snap_path
+                result = _run_vscode_command([snap_path, "--version"])
+                if result.returncode == 0:
+                    return snap_path
              except (FileNotFoundError, subprocess.CalledProcessError):
                 pass
     
@@ -75,10 +74,12 @@ def get_installed_extensions():
     try:
         command = [vscode_executable, "--list-extensions"]
         result = _run_vscode_command(command)
-        extensions = result.stdout.strip().split('\n')
-        return set(ext.lower() for ext in extensions if ext) # Use lowercase for consistent matching
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        return set()
+        if result.returncode == 0:
+            extensions = result.stdout.strip().split('\n')
+            return set(ext.lower() for ext in extensions if ext)
+    except FileNotFoundError:
+        pass
+    return set()
 
 def install_extension(extension_id):
     """Install a VSCode extension and verify its installation."""
@@ -86,9 +87,7 @@ def install_extension(extension_id):
     if not vscode_executable:
         return {"status": "Error", "message": "VSCode is not installed or could not be found."}
 
-    # Normalize extension ID to lowercase for comparison
     normalized_extension_id = extension_id.lower()
-
     if normalized_extension_id in get_installed_extensions():
         return {"status": "Success", "message": f"Extension '{extension_id}' is already installed."}
 
@@ -96,21 +95,25 @@ def install_extension(extension_id):
 
     try:
         install_command = [vscode_executable, "--install-extension", extension_id]
-        _run_vscode_command(install_command)
-        
-        # Retry mechanism for verification
+        result = _run_vscode_command(install_command)
+
+        # Primary Verification: Check the command's output for success message.
+        if result.returncode == 0 and "was successfully installed" in result.stdout:
+            return {"status": "Success", "message": f"Extension '{extension_id}' installed successfully."}
+
+        # Secondary Verification: If stdout is not conclusive, check the extension list.
         for _ in range(3):
-            time.sleep(2)  # A short delay is still helpful
+            time.sleep(2)
             if normalized_extension_id in get_installed_extensions():
-                return {"status": "Success", "message": f"Extension '{extension_id}' installed and verified successfully."}
+                return {"status": "Success", "message": f"Extension '{extension_id}' installed and verified."}
 
-        return {"status": "Error", "message": f"Installation of '{extension_id}' failed verification."}
+        # If both checks fail, report a detailed error.
+        error_details = result.stderr.strip() or result.stdout.strip()
+        return {"status": "Error", "message": f"Installation of '{extension_id}' failed verification. Details: {error_details}"}
 
-    except subprocess.CalledProcessError as e:
-        error_message = e.stderr.strip() if e.stderr else e.stdout.strip()
-        return {"status": "Error", "message": f"Failed to install extension '{extension_id}'. Error: {error_message}"}
-    except FileNotFoundError:
-        return {"status": "Error", "message": "The 'code' command is not available."}
+    except Exception as e:
+        return {"status": "Error", "message": f"An unexpected error occurred: {str(e)}"}
+
 
 def uninstall_extension(extension_id):
     """Uninstall a VSCode extension and verify its removal."""
@@ -119,7 +122,6 @@ def uninstall_extension(extension_id):
         return {"status": "Error", "message": "VSCode is not installed or could not be found."}
 
     normalized_extension_id = extension_id.lower()
-
     if normalized_extension_id not in get_installed_extensions():
         return {"status": "Success", "message": f"Extension '{extension_id}' is not installed."}
 
@@ -127,21 +129,21 @@ def uninstall_extension(extension_id):
 
     try:
         uninstall_command = [vscode_executable, "--uninstall-extension", extension_id]
-        _run_vscode_command(uninstall_command)
-        
-        # Retry mechanism for verification
+        result = _run_vscode_command(uninstall_command)
+
+        if result.returncode == 0 and "was successfully uninstalled" in result.stdout:
+             return {"status": "Success", "message": f"Extension '{extension_id}' uninstalled successfully."}
+
         for _ in range(3):
             time.sleep(2)
             if normalized_extension_id not in get_installed_extensions():
-                return {"status": "Success", "message": f"Extension '{extension_id}' uninstalled and verified successfully."}
+                return {"status": "Success", "message": f"Extension '{extension_id}' uninstalled and verified."}
+        
+        error_details = result.stderr.strip() or result.stdout.strip()
+        return {"status": "Error", "message": f"Uninstallation of '{extension_id}' failed verification. Details: {error_details}"}
 
-        return {"status": "Error", "message": f"Uninstallation of '{extension_id}' failed verification."}
-
-    except subprocess.CalledProcessError as e:
-        error_message = e.stderr.strip() if e.stderr else e.stdout.strip()
-        return {"status": "Error", "message": f"Failed to uninstall extension '{extension_id}'. Error: {error_message}"}
-    except FileNotFoundError:
-        return {"status": "Error", "message": "The 'code' command is not available."}
+    except Exception as e:
+        return {"status": "Error", "message": f"An unexpected error occurred: {str(e)}"}
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
