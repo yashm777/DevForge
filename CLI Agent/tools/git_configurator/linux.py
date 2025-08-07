@@ -65,18 +65,17 @@ def generate_ssh_key(email: str, key_path: str = "~/.ssh/id_rsa"):
             "-f", key_path, "-N", ""
         ], check=True)
         logging.info("SSH key generated successfully.")
+        pub_key_path = key_path + ".pub"
+        if not os.path.exists(pub_key_path):
+            raise RuntimeError("Public key file not found after generation.")
+        with open(pub_key_path, "r") as pubkey_file:
+            pubkey = pubkey_file.read()
+        logging.info("\nYour new SSH public key:\n")
+        print(pubkey)
+        return {"status": "success", "message": f"SSH key generated at {key_path}"}
     else:
         logging.info(f"SSH key already exists at: {key_path}")
-
-    pub_key_path = key_path + ".pub"
-    if not os.path.exists(pub_key_path):
-        raise RuntimeError("Public key file not found after generation.")
-
-    with open(pub_key_path, "r") as pubkey_file:
-        pubkey = pubkey_file.read()
-    logging.info("\nYour new SSH public key:\n")
-    print(pubkey)
-    return f"SSH key generated at {key_path}"
+        return {"status": "warning", "message": f"SSH key already exists at {key_path}. Generation skipped."}
 
 
 def add_ssh_key_to_github_or_manual(email: str, pat: str = None, key_path: str = "~/.ssh/id_rsa"):
@@ -212,8 +211,10 @@ def perform_git_setup(
         if action == "generate_ssh_key":
             if not email:
                 return {"status": "error", "message": "Email is required to generate SSH key."}
-            msg = generate_ssh_key(email)
-            return {"status": "success", "action": action, "details": {"message": msg, "email": email}}
+            result = generate_ssh_key(email)
+            result["action"] = action
+            result["details"] = {"email": email}
+            return result
 
         elif action == "clone":
             if not repo_url:
