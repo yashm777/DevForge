@@ -160,9 +160,10 @@ def perform_git_setup(
             result = add_ssh_key_to_github(pubkey, pat)
             return {"status": "success", "action": action, "details": {"message": result}}
         else:
-            # Manual instructions for adding SSH key
+            # Manual instructions for adding SSH key, with explicit PAT message
             manual_msg = (
-                "Manual steps to add your SSH key to GitHub:\n"
+                "You did not provide a GitHub Personal Access Token (PAT), so the key cannot be added automatically.\n"
+                "Here are the manual steps to add your SSH key to GitHub:\n"
                 "1. Run the following command to display your public key:\n"
                 "   (CMD)      type %USERPROFILE%\\.ssh\\id_rsa.pub\n"
                 "   (PowerShell) Get-Content $env:USERPROFILE\\.ssh\\id_rsa.pub\n"
