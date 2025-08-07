@@ -55,8 +55,11 @@ def generate_ssh_key(email: str, key_path: str = "~/.ssh/id_rsa"):
     if not email or "@" not in email:
         raise ValueError("A valid email address is required to generate an SSH key.")
     key_path = os.path.expanduser(key_path)
+    ssh_dir = os.path.dirname(key_path)
+    if not os.path.exists(ssh_dir):
+        os.makedirs(ssh_dir, mode=0o700)
     if not os.path.exists(key_path):
-        logging.info("Generating a new SSH key...")
+        # generate new key
         subprocess.run([
             "ssh-keygen", "-t", "rsa", "-b", "4096", "-C", email,
             "-f", key_path, "-N", ""
