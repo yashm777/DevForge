@@ -1,125 +1,11 @@
 import subprocess
 import sys
 import os
-import json
-import urllib.request
-import zipfile
-import tempfile
 import shutil
-from pathlib import Path
-
-def get_vscode_extensions_dir():
-    """Get the VSCode extensions directory path."""
-    home = Path.home()
-    return home / '.vscode' / 'extensions'
-
-def get_installed_extensions():
-    """Get a list of installed VSCode extensions by reading the extensions directory."""
-    extensions_dir = get_vscode_extensions_dir()
-    if not extensions_dir.exists():
-        return set()
-    
-    extensions = set()
-    try:
-        for item in extensions_dir.iterdir():
-            if item.is_dir() and not item.name.startswith('.'):
-                # Extension directories are named like "publisher.extension-version"
-                # We want just "publisher.extension"
-                if '-' in item.name:
-                    # Remove version part
-                    extension_id = '-'.join(item.name.split('-')[:-1])
-                    extensions.add(extension_id)
-                else:
-                    extensions.add(item.name)
-    except Exception as e:
-        print(f"Warning: Could not read extensions directory: {e}")
-    
-    return extensions
-
-def download_extension_from_marketplace(extension_id):
-    """Download extension from VSCode marketplace."""
-    try:
-        if '.' not in extension_id:
-            return None, "Invalid extension ID format. Expected 'publisher.extension'"
-        
-        publisher, name = extension_id.split('.', 1)
-        
-        # VSCode Marketplace API URL
-        url = f"https://marketplace.visualstudio.com/_apis/public/gallery/publishers/{publisher}/vsextensions/{name}/latest/vspackage"
-        
-        # Create temporary file
-        temp_fd, temp_path = tempfile.mkstemp(suffix='.vsix')
-        
-        try:
-            # Download the extension using urllib (no external dependencies)
-            with urllib.request.urlopen(url, timeout=30) as response:
-                with os.fdopen(temp_fd, 'wb') as temp_file:
-                    shutil.copyfileobj(response, temp_file)
-            
-            return temp_path, None
-            
-        except Exception as e:
-            os.close(temp_fd)
-            try:
-                os.unlink(temp_path)
-            except:
-                pass
-            raise e
-            
-    except Exception as e:
-        return None, f"Download failed: {str(e)}"
-
-def install_extension_from_vsix(vsix_path, extension_id):
-    """Extract VSIX file and install to extensions directory."""
-    extensions_dir = get_vscode_extensions_dir()
-    extensions_dir.mkdir(parents=True, exist_ok=True)
-    
-    try:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
-            
-            # Extract VSIX (it's a ZIP file)
-            with zipfile.ZipFile(vsix_path, 'r') as zip_ref:
-                zip_ref.extractall(temp_path)
-            
-            # Find the extension content
-            extension_path = temp_path / 'extension'
-            if not extension_path.exists():
-                return False, "Invalid extension package structure"
-            
-            # Read package.json to get version info
-            package_json_path = extension_path / 'package.json'
-            if not package_json_path.exists():
-                return False, "Invalid extension package - missing package.json"
-            
-            with open(package_json_path, 'r', encoding='utf-8') as f:
-                package_data = json.load(f)
-            
-            # Get extension metadata
-            publisher = package_data.get('publisher', extension_id.split('.')[0])
-            name = package_data.get('name', extension_id.split('.')[-1])
-            version = package_data.get('version', '1.0.0')
-            
-            # Create final extension directory name
-            extension_dir_name = f"{publisher}.{name}-{version}"
-            final_path = extensions_dir / extension_dir_name
-            
-            # Remove existing versions
-            for existing in extensions_dir.glob(f"{publisher}.{name}-*"):
-                if existing.is_dir():
-                    shutil.rmtree(existing)
-            
-            # Copy extension files
-            shutil.copytree(extension_path, final_path)
-            
-            return True, f"Extension installed to {final_path}"
-            
-    except Exception as e:
-        return False, f"Installation failed: {str(e)}"
 
 def find_vscode_executable():
-    """Find the path to the VSCode executable (for fallback only)."""
-    # Windows paths
+    """Find the path to the VSCode executable, prioritizing official locations over PATH."""
+    # 1. Check common locations for Windows first to prioritize official VSCode
     if sys.platform == "win32":
         user_profile = os.path.expanduser("~")
         common_paths = [
@@ -129,140 +15,118 @@ def find_vscode_executable():
         for path in common_paths:
             if os.path.exists(path):
                 try:
-                    subprocess.run([path, "--version"], check=True, capture_output=True, text=True, timeout=10)
+                    subprocess.run([path, "--version"], check=True, capture_output=True, text=True)
                     return path
-                except:
+                except (FileNotFoundError, subprocess.CalledProcessError):
                     continue
-    
-    # Linux paths
-    elif sys.platform.startswith("linux"):
-        user_home = os.path.expanduser("~")
-        common_paths = [
-            "/usr/bin/code",
-            "/snap/bin/code", 
-            "/usr/local/bin/code",
-            os.path.join(user_home, ".local", "bin", "code"),
-            "/opt/code/bin/code",
-        ]
-        for path in common_paths:
-            if os.path.exists(path):
-                try:
-                    subprocess.run([path, "--version"], check=True, capture_output=True, text=True, timeout=10)
-                    return path
-                except:
-                    continue
-    
-    # macOS paths
-    elif sys.platform == "darwin":
-        common_paths = [
-            "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code",
-            "/usr/local/bin/code"
-        ]
-        for path in common_paths:
-            if os.path.exists(path):
-                try:
-                    subprocess.run([path, "--version"], check=True, capture_output=True, text=True, timeout=10)
-                    return path
-                except:
-                    continue
-    
-    # Check PATH as fallback
+
+    # 2. Fallback to checking if 'code' is in the PATH
     try:
-        use_shell = sys.platform == "win32"
-        subprocess.run(["code", "--version"], check=True, shell=use_shell, capture_output=True, text=True, timeout=10)
+        subprocess.run(["code", "--version"], check=True, shell=True, capture_output=True, text=True)
         return "code"
-    except:
-        pass
-    
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        pass  # Not in PATH
+
     return None
 
 def is_vscode_installed():
     """Check if VSCode is installed."""
-    return find_vscode_executable() is not None or get_vscode_extensions_dir().exists()
+    return find_vscode_executable() is not None
+
+def get_installed_extensions():
+    """Get a list of installed VSCode extensions."""
+    vscode_executable = find_vscode_executable()
+    if not vscode_executable:
+        return set()
+    
+    try:
+        command = [vscode_executable, "--list-extensions"]
+        result = subprocess.run(command, check=True, capture_output=True, text=True)
+        return set(result.stdout.strip().split('\n'))
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return set()
 
 def install_extension(extension_id):
     """
-    Install a VSCode extension using marketplace download (primary) with CLI fallback.
+    Installs a VSCode extension with a robust, platform-aware fallback mechanism.
+    It first tries the standard installation. If that fails, it uses curl with a
+    browser User-Agent to download the VSIX file and then installs it locally.
     
     Args:
         extension_id (str): The ID of the extension to install (e.g., 'ms-python.python').
-        
-    Returns:
-        dict: A dictionary with a status message.
     """
-    # Check if already installed
-    installed_extensions = get_installed_extensions()
-    if any(extension_id.lower() == ext.lower() for ext in installed_extensions):
-        return {"status": "Success", "message": f"Extension '{extension_id}' is already installed."}
-    
-    print(f"Installing extension '{extension_id}' via marketplace download...")
-    
-    # Try direct marketplace download first (avoids security policy issues)
-    vsix_path, download_error = download_extension_from_marketplace(extension_id)
-    if vsix_path:
-        try:
-            success, install_message = install_extension_from_vsix(vsix_path, extension_id)
-            
-            # Clean up downloaded file
-            try:
-                os.unlink(vsix_path)
-            except:
-                pass
-            
-            if success:
-                # Verify installation
-                installed_extensions_after = get_installed_extensions()
-                if any(extension_id.lower() == ext.lower() for ext in installed_extensions_after):
-                    return {"status": "Success", "message": f"Extension '{extension_id}' installed successfully via marketplace."}
-                else:
-                    return {"status": "Success", "message": f"Extension '{extension_id}' installation completed. {install_message}"}
-            else:
-                print(f"Marketplace installation failed: {install_message}")
-                # Fall through to CLI fallback
-        except Exception as e:
-            print(f"Marketplace installation error: {str(e)}")
-            # Fall through to CLI fallback
-    else:
-        print(f"Marketplace download failed: {download_error}")
-    
-    # Fallback to CLI method if marketplace download failed
-    print(f"Attempting CLI fallback installation for '{extension_id}'...")
-    
     vscode_executable = find_vscode_executable()
     if not vscode_executable:
-        return {"status": "Error", "message": f"VSCode not found and marketplace installation failed: {download_error or 'Unknown error'}"}
+        print("Error: VSCode is not installed or could not be found.")
+        return
+
+    # Check if the extension is already installed
+    if any(extension_id.lower() == ext.lower() for ext in get_installed_extensions()):
+        print(f"Info: Extension '{extension_id}' is already installed.")
+        return
+
+    print(f"Attempting standard installation for '{extension_id}'...")
     
     try:
-        # Kill any existing VSCode processes to minimize interference
-        try:
-            if sys.platform == "win32":
-                subprocess.run(["taskkill", "/F", "/IM", "Code.exe"], capture_output=True, check=False, timeout=5)
-            else:
-                subprocess.run(["pkill", "-f", "code"], capture_output=True, check=False, timeout=5)
-        except:
-            pass
+        # --- PRIMARY METHOD: Standard VS Code command ---
+        primary_command = [vscode_executable, "--install-extension", extension_id]
+        subprocess.run(primary_command, check=True, capture_output=True, text=True)
         
-        # CLI installation with minimal verification
-        install_command = [vscode_executable, "--install-extension", extension_id, "--force"]
-        use_shell = sys.platform == "win32"
+        print(f"Success: Extension '{extension_id}' installed successfully via the standard method.")
+        return
         
-        result = subprocess.run(install_command, check=True, shell=use_shell, capture_output=True, text=True, timeout=60)
-        
-        if result.returncode == 0:
-            # Don't do extensive verification to avoid triggering security policies
-            return {"status": "Success", "message": f"Extension '{extension_id}' installation command completed successfully."}
-        else:
-            return {"status": "Error", "message": f"CLI installation failed with return code {result.returncode}"}
-            
     except subprocess.CalledProcessError as e:
-        error_msg = e.stderr.strip() if e.stderr else str(e)
-        return {"status": "Error", "message": f"CLI installation failed: {error_msg}"}
-    except Exception as e:
-        return {"status": "Error", "message": f"Installation failed: {str(e)}"}
+        # --- FALLBACK TRIGGERED ---
+        print(f"Standard installation failed. Triggering fallback method...")
+        
+        # The fallback is only for non-windows systems
+        if sys.platform == "win32":
+             print("Error: Fallback method is not available for Windows.")
+             return
+
+        # Check if curl is installed
+        if not shutil.which("curl"):
+            print("Error: Fallback failed because 'curl' command is not installed.")
+            return
+
+        # Construct the download URL and local file path
+        try:
+            publisher, ext_name = extension_id.split('.')
+        except ValueError:
+            print(f"Error: Invalid extension ID format '{extension_id}'.")
+            return
+            
+        vsix_url = f"https://marketplace.visualstudio.com/_apis/public/gallery/publishers/{publisher}/vsextensions/{ext_name}/latest/vspackage"
+        vsix_path = f"/tmp/{extension_id}.vsix"
+        
+        # Define a standard browser User-Agent to avoid being blocked
+        browser_user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36"
+
+        try:
+            print(f"Fallback: Downloading from '{vsix_url}'...")
+            curl_command = [
+                "curl",
+                "--location", # Follow redirects
+                "--user-agent", browser_user_agent, # Pretend to be a browser
+                "--output", vsix_path, # Save to file
+                vsix_url
+            ]
+            subprocess.run(curl_command, check=True, capture_output=True, text=True)
+
+            print(f"Fallback: Installing from downloaded file '{vsix_path}'...")
+            install_from_file_command = [vscode_executable, "--install-extension", vsix_path, "--force"]
+            subprocess.run(install_from_file_command, check=True, capture_output=True, text=True)
+            
+            os.remove(vsix_path) # Clean up the downloaded file
+
+            print(f"Success: Extension '{extension_id}' installed successfully using the fallback method.")
+
+        except Exception as fallback_error:
+            print(f"Error: The fallback installation method also failed. Reason: {fallback_error}")
 
 def uninstall_extension(extension_id):
     """
-    Uninstall a VSCode extension by removing its directory.
+    Uninstall a VSCode extension and verify its removal by comparing extension lists.
     
     Args:
         extension_id (str): The ID of the extension to uninstall (e.g., 'ms-python.python').
@@ -270,25 +134,32 @@ def uninstall_extension(extension_id):
     Returns:
         dict: A dictionary with a status message.
     """
-    extensions_dir = get_vscode_extensions_dir()
-    if not extensions_dir.exists():
-        return {"status": "Success", "message": f"Extension '{extension_id}' is not installed."}
+    vscode_executable = find_vscode_executable()
+    if not vscode_executable:
+        return {"status": "Error", "message": "VSCode is not installed or could not be found."}
+
+    extensions_before = get_installed_extensions()
     
-    # Find and remove extension directories that match
-    removed_count = 0
+    if not any(extension_id.lower() == ext.lower() for ext in extensions_before):
+        return {"status": "Success", "message": f"Extension '{extension_id}' is not installed."}
+
+    print(f"Attempting to uninstall '{extension_id}'...")
+
     try:
-        for item in extensions_dir.iterdir():
-            if item.is_dir() and item.name.lower().startswith(extension_id.lower() + '-'):
-                print(f"Removing extension directory: {item.name}")
-                shutil.rmtree(item)
-                removed_count += 1
-    except Exception as e:
-        return {"status": "Error", "message": f"Failed to uninstall extension '{extension_id}'. Error: {str(e)}"}
-    
-    if removed_count > 0:
-        return {"status": "Success", "message": f"Extension '{extension_id}' uninstalled successfully. Removed {removed_count} version(s)."}
-    else:
-        return {"status": "Success", "message": f"Extension '{extension_id}' is not installed."}
+        uninstall_command = [vscode_executable, "--uninstall-extension", extension_id]
+        subprocess.run(uninstall_command, check=True, shell=True, capture_output=True, text=True)
+        
+        extensions_after = get_installed_extensions()
+
+        if not any(extension_id.lower() == ext.lower() for ext in extensions_after):
+            return {"status": "Success", "message": f"Extension '{extension_id}' uninstalled and verified successfully."}
+        
+        return {"status": "Error", "message": f"Uninstallation of '{extension_id}' failed verification."}
+
+    except subprocess.CalledProcessError as e:
+        return {"status": "Error", "message": f"Failed to uninstall extension '{extension_id}'. Error: {e.stderr.strip()}"}
+    except FileNotFoundError:
+        return {"status": "Error", "message": "The 'code' command is not available."}
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
