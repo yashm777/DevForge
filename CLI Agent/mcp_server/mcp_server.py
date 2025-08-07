@@ -185,6 +185,8 @@ def handle_system_config(tool, action="check", value=None):
         from tools.system_config import windows as sys_tool
     elif os_type == "linux":
         from tools.system_config import linux as sys_tool
+    elif os_type == "darwin":  # macOS
+        from tools.system_config import mac as sys_tool
     else:
         return {"status": "error", "message": f"System config tools not implemented for {os_type}"}
 
