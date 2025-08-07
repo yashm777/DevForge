@@ -36,15 +36,15 @@ def format_result(result: Dict[str, Any]) -> str:
                 msg = result["details"].get("message")
                 if msg:
                     return msg
-            # Fallback to top-level message
-            msg = result.get("message")
-            if msg:
-                return msg
-            # Fallback to result.message
+            # Fallback to result.message if present
             if "result" in result and isinstance(result["result"], dict):
                 msg = result["result"].get("message")
                 if msg:
                     return msg
+            # Fallback to top-level message
+            msg = result.get("message")
+            if msg:
+                return msg
             # If nothing found, show a generic message for git actions
             return "No message returned from git operation."
         # --- Default formatting for all other tools ---
