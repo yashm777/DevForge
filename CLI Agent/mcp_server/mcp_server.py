@@ -185,6 +185,8 @@ def handle_system_config(tool, action="check", value=None):
         from tools.system_config import windows as sys_tool
     elif os_type == "linux":
         from tools.system_config import linux as sys_tool
+    elif os_type == "darwin":  # macOS
+        from tools.system_config import mac as sys_tool
     else:
         return {"status": "error", "message": f"System config tools not implemented for {os_type}"}
 
@@ -231,6 +233,21 @@ def handle_git_setup(action, repo_url="", branch="", username="", email="", dest
     elif os_type == "windows":
         try:
             from tools.git_configurator.windows import perform_git_setup
+            return perform_git_setup(
+                action=action,
+                repo_url=repo_url,
+                branch=branch,
+                username=username,
+                email=email,
+                dest_dir=dest_dir,
+                pat=pat
+            )
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    elif os_type == "darwin":  # macOS
+        try:
+            from tools.git_configurator.mac import perform_git_setup
             return perform_git_setup(
                 action=action,
                 repo_url=repo_url,

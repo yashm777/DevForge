@@ -24,6 +24,21 @@ def get_post_upgrade_instructions(tool_name: str, version: str) -> str:
     """
     tool_base = tool_name.split('@')[0].lower()
     
+    # Check if this is a versioned package
+    is_versioned = '@' in tool_name
+    
+    if is_versioned:
+        # Special instructions for versioned packages
+        if tool_base == 'node':
+            return f"• Verify: `/opt/homebrew/opt/{tool_name}/bin/node --version` should show v{version}\n• This is {tool_name} (specific version)\n• To use this version: add `/opt/homebrew/opt/{tool_name}/bin` to your PATH\n• Or use `nvm` to manage multiple Node.js versions"
+        elif tool_base == 'python':
+            return f"• Verify: `/opt/homebrew/opt/{tool_name}/bin/python3 --version` should show {version}\n• This is {tool_name} (specific version)\n• To use this version: add `/opt/homebrew/opt/{tool_name}/bin` to your PATH\n• Or use `pyenv` to manage multiple Python versions"
+        elif tool_base in ['java', 'openjdk']:
+            return f"• Verify: `/opt/homebrew/opt/{tool_name}/bin/java --version` should show {version}\n• This is {tool_name} (specific version)\n• Set JAVA_HOME: `export JAVA_HOME=/opt/homebrew/opt/{tool_name}/libexec/openjdk.jdk/Contents/Home`\n• Add to ~/.zshrc for permanent use"
+        else:
+            return f"• This is {tool_name} (specific version)\n• Check: `/opt/homebrew/opt/{tool_name}/bin/{tool_base} --version`\n• Add to PATH to use: `export PATH=\"/opt/homebrew/opt/{tool_name}/bin:$PATH\"`"
+    
+    # Regular instructions for non-versioned packages
     instructions = {
         'node': f"• Verify: `node --version` should show v{version}\n• Use: `npm install -g <package>` to install global packages\n• Consider using `nvm` for managing multiple Node.js versions",
         'python': f"• Verify: `python3 --version` should show {version}\n• Use: `pip3 install <package>` to install packages\n• Consider using `pyenv` for managing multiple Python versions",
