@@ -1,10 +1,11 @@
-
 import subprocess
 import sys
 import os
+import shutil
 
 def find_vscode_executable():
-    """Find the path to the VSCode executable, prioritizing official locations over PATH."""
+    """Find the path to the VSCode executable, prioritizing official locations over PATH.
+    This function is now compatible with Windows and Linux."""
     # 1. Check common locations for Windows first to prioritize official VSCode
     if sys.platform == "win32":
         user_profile = os.path.expanduser("~")
@@ -19,8 +20,17 @@ def find_vscode_executable():
                     return path
                 except (FileNotFoundError, subprocess.CalledProcessError):
                     continue
+    # 2. Check for linux
+    elif sys.platform == "linux":
+        # Check if 'code' is in the PATH
+        if shutil.which("code"):
+            return "code"
+        # Check for snap installation
+        snap_path = "/snap/bin/code"
+        if os.path.exists(snap_path):
+            return snap_path
 
-    # 2. Fallback to checking if 'code' is in the PATH
+    # 3. Fallback to checking if 'code' is in the PATH for any OS
     try:
         subprocess.run(["code", "--version"], check=True, shell=True, capture_output=True, text=True)
         return "code"
