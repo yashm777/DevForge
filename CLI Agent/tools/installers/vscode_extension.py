@@ -1,6 +1,7 @@
 import subprocess
 import sys
 import os
+import shutil
 
 def find_vscode_executable():
     """Find the path to the VSCode executable, prioritizing official locations over PATH."""
@@ -47,65 +48,58 @@ def get_installed_extensions():
 
 def install_extension(extension_id):
     """
-    Install a VSCode extension with platform-specific logic and verbose logging for diagnostics.
-    
-    Args:
-        extension_id (str): The ID of the extension to install (e.g., 'ms-python.python').
-        
-    Returns:
-        dict: A dictionary with a status message.
+    Install a VSCode extension, with a curl fallback for stubborn Linux environments.
     """
     vscode_executable = find_vscode_executable()
     if not vscode_executable:
         return {"status": "Error", "message": "VSCode is not installed or could not be found."}
 
-    extensions_before = get_installed_extensions()
-    
-    if any(extension_id.lower() == ext.lower() for ext in extensions_before):
+    if any(extension_id.lower() == ext.lower() for ext in get_installed_extensions()):
         return {"status": "Success", "message": f"Extension '{extension_id}' is already installed."}
 
-    print(f"Attempting to install '{extension_id}' with verbose logging for diagnostics...")
-
+    print(f"Attempting standard installation for '{extension_id}'...")
+    
     try:
-        # --- Platform-Specific Command ---
-        if sys.platform == "win32":
-            # WINDOWS: Keep the original working command
-            install_command = [vscode_executable, "--install-extension", extension_id, "--force"]
-            subprocess.run(install_command, check=True, shell=True, capture_output=True, text=True)
-        else:
-            # LINUX/MACOS: Add --verbose for detailed error logging
-            install_command = [vscode_executable, "--install-extension", extension_id, "--force", "--verbose"]
-            env = os.environ.copy()
-            env["NODE_TLS_REJECT_UNAUTHORIZED"] = "0"
-            # We will now intentionally capture and print the output for diagnosis
-            result = subprocess.run(install_command, check=True, capture_output=True, text=True, env=env)
-            print("--- VSCode Verbose Output ---")
-            print(result.stdout)
-            print(result.stderr)
-            print("-----------------------------")
+        # --- PRIMARY METHOD: Standard VS Code command ---
+        install_command = [vscode_executable, "--install-extension", extension_id]
+        subprocess.run(install_command, check=True, capture_output=True, text=True)
+        print(f"Standard installation successful for '{extension_id}'.")
+        return {"status": "Success", "message": f"Extension '{extension_id}' installed successfully."}
         
-        # --- Verification Logic ---
-        extensions_after = get_installed_extensions()
-        if any(extension_id.lower() == ext.lower() for ext in extensions_after):
-            return {"status": "Success", "message": f"Extension '{extension_id}' installed and verified successfully."}
-
-        return {"status": "Error", "message": f"Installation of '{extension_id}' failed verification. See console for verbose logs."}
-
     except subprocess.CalledProcessError as e:
-        # The verbose output will be in stderr, which is crucial for debugging
-        error_message = e.stderr.strip() if e.stderr else "No error output from VSCode."
-        return {"status": "Error", "message": f"Failed to install extension '{extension_id}'. Verbose Error Log:\n---\n{error_message}\n---"}
-    except FileNotFoundError:
-        return {"status": "Error", "message": "The 'code' command is not available."}
+        print(f"Standard installation failed: {e.stderr.strip()}. Attempting fallback method...")
 
-    except subprocess.CalledProcessError as e:
-        # Provide a more detailed error message
-        error_message = e.stderr.strip() if e.stderr else "No error output."
-        if "CERT_HAS_EXPIRED" in error_message or "unable to verify the first certificate" in error_message:
-            error_message += "\nThis might be an SSL/TLS certificate issue. Ensure your system's certificates are up to date."
-        return {"status": "Error", "message": f"Failed to install extension '{extension_id}'. Error: {error_message}"}
-    except FileNotFoundError:
-        return {"status": "Error", "message": "The 'code' command is not available."}
+        # --- FALLBACK METHOD: Use curl to download and then install from VSIX file ---
+        # This part will only run on non-Windows systems if the primary method fails.
+        if sys.platform == "win32":
+             return {"status": "Error", "message": f"Failed to install '{extension_id}'. Fallback not available for Windows."}
+
+        if not shutil.which("curl"):
+            return {"status": "Error", "message": "Fallback failed: 'curl' command not found."}
+
+        publisher, ext_name = extension_id.split('.')
+        vsix_url = f"https://marketplace.visualstudio.com/_apis/public/gallery/publishers/{publisher}/vsextensions/{ext_name}/latest/vspackage"
+        vsix_path = f"/tmp/{extension_id}.vsix"
+
+        try:
+            print(f"Fallback: Downloading from {vsix_url}...")
+            curl_command = ["curl", "-vL", vsix_url, "-o", vsix_path]
+            subprocess.run(curl_command, check=True, capture_output=True, text=True)
+
+            print(f"Fallback: Installing from downloaded file '{vsix_path}'...")
+            install_from_file_command = [vscode_executable, "--install-extension", vsix_path, "--force"]
+            subprocess.run(install_from_file_command, check=True, capture_output=True, text=True)
+            
+            os.remove(vsix_path) # Clean up the downloaded file
+
+            if any(extension_id.lower() == ext.lower() for ext in get_installed_extensions()):
+                 print("Fallback installation successful and verified.")
+                 return {"status": "Success", "message": f"Extension '{extension_id}' installed successfully using fallback method."}
+            else:
+                 return {"status": "Error", "message": "Fallback installation failed during final verification."}
+
+        except Exception as fallback_error:
+            return {"status": "Error", "message": f"The fallback installation method also failed. Error: {fallback_error}"}
 
 def uninstall_extension(extension_id):
     """
