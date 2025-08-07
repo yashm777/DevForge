@@ -6,19 +6,24 @@ import platform
 import logging
 import requests
 
+# Check if Git is installed on the system
 def is_git_installed() -> bool:
     return shutil.which("git") is not None
 
+# Check if SSH and ssh-keygen are installed
 def is_ssh_installed() -> bool:
     return shutil.which("ssh") is not None and shutil.which("ssh-keygen") is not None
 
+# Get the .ssh directory path in the user's home directory
 def get_ssh_dir() -> Path:
     return Path.home() / ".ssh"
 
+# Get the paths for the private and public SSH key files
 def get_ssh_key_paths() -> tuple[Path, Path]:
     ssh_dir = get_ssh_dir()
     return ssh_dir / "id_rsa", ssh_dir / "id_rsa.pub"
 
+# Generate a new SSH key if it doesn't already exist
 def generate_ssh_key(email: str) -> dict:
     private_key, public_key = get_ssh_key_paths()
     ssh_dir = get_ssh_dir()
@@ -46,6 +51,7 @@ def generate_ssh_key(email: str) -> dict:
     except Exception as e:
         return {"status": "error", "message": f"Failed to generate SSH key: {e}"}
 
+# Retrieve the public SSH key if it exists
 def get_public_key() -> dict:
     _, public_key = get_ssh_key_paths()
     if public_key.exists():
@@ -54,6 +60,7 @@ def get_public_key() -> dict:
     else:
         return {"status": "error", "message": "Public key does not exist."}
 
+# Check SSH connection to GitHub
 def check_ssh_connection() -> dict:
     try:
         result = subprocess.run(["ssh", "-T", "git@github.com"], capture_output=True, text=True, timeout=15)
@@ -66,6 +73,7 @@ def check_ssh_connection() -> dict:
     except Exception as e:
         return {"status": "error", "message": f"SSH connection check failed: {e}"}
 
+# Clone a repository to the specified directory
 def clone_repository(repo_url: str, target_dir: str = ".") -> dict:
     target_path = Path(target_dir).expanduser().resolve()
     try:
@@ -82,6 +90,7 @@ def clone_repository(repo_url: str, target_dir: str = ".") -> dict:
             )
         }
 
+# Add SSH public key to GitHub using the API and a Personal Access Token (PAT)
 def add_ssh_key_to_github(pubkey: str, pat: str) -> str:
     """
     Add SSH public key to GitHub using the API and a Personal Access Token (PAT).
@@ -101,6 +110,7 @@ def add_ssh_key_to_github(pubkey: str, pat: str) -> str:
     else:
         return f"❌ Failed to add SSH key via API: {response.text}"
 
+# Main entry point for performing git-related setup actions on Windows
 def perform_git_setup(
     action: str,
     email: str = "",
@@ -110,15 +120,18 @@ def perform_git_setup(
     dest_dir: str = ".",
     pat: str = ""
 ) -> dict:
+    # Ensure this script is only run on Windows
     if platform.system() != "Windows":
         return {"status": "error", "message": "This script is intended for Windows systems."}
 
+    # Check for required tools
     if not is_git_installed():
         return {"status": "error", "message": "Git is not installed. Please install Git for Windows and try again."}
 
     if not is_ssh_installed():
         return {"status": "error", "message": "ssh or ssh-keygen not found. Make sure Git Bash or OpenSSH is available."}
 
+    # Handle each supported action
     if action == "generate_ssh_key":
         if not email or "@" not in email:
             return {"status": "error", "message": "A valid email is required to generate SSH key."}
@@ -143,13 +156,16 @@ def perform_git_setup(
         with open(public_key_path, "r") as pubkey_file:
             pubkey = pubkey_file.read()
         if pat:
+            # Add key to GitHub via API if PAT is provided
             result = add_ssh_key_to_github(pubkey, pat)
             return {"status": "success", "action": action, "details": {"message": result}}
         else:
+            # Manual instructions for adding SSH key
             manual_msg = (
                 "Manual steps to add your SSH key to GitHub:\n"
                 "1. Run the following command to display your public key:\n"
-                "   type %USERPROFILE%\\.ssh\\id_rsa.pub\n"
+                "   (CMD)      type %USERPROFILE%\\.ssh\\id_rsa.pub\n"
+                "   (PowerShell) Get-Content $env:USERPROFILE\\.ssh\\id_rsa.pub\n"
                 "2. Copy the output.\n"
                 "3. Go to https://github.com/settings/ssh/new\n"
                 "4. Paste the key and save."
