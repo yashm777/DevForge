@@ -189,11 +189,15 @@ def run(
             # Default for all other tasks
             result = mcp_client.call_jsonrpc(method, params)
 
-            # Remove custom handling for git_setup, just use the default extraction logic:
-            if isinstance(result, dict) and "result" in result and isinstance(result["result"], dict):
-                formatted_result = format_result(result["result"])
-            else:
-                formatted_result = format_result(result)
+            # Custom handling for git_setup method
+            if method == "git_setup":
+                # Always extract the inner 'result' dict if present
+                if isinstance(result, dict) and "result" in result and isinstance(result["result"], dict):
+                    formatted_result = format_result(result["result"])
+                else:
+                    formatted_result = format_result(result)
+                console.print(Panel(formatted_result, title=f"Step {i}: {method}", border_style="green"))
+                continue
 
             console.print(Panel(formatted_result, title=f"Step {i}: {method}", border_style="green"))
 
