@@ -85,10 +85,13 @@ def generate_ssh_key(email: str, key_path: str = "~/.ssh/id_rsa", verbose: bool 
         if verbose:
             logging.info("Generating a new SSH key...")
         os.makedirs(ssh_dir, exist_ok=True)
-        subprocess.run([
+        
+        # Use proper input/output handling to avoid SIGPIPE issues
+        result = subprocess.run([
             "ssh-keygen", "-t", "rsa", "-b", "4096", "-C", email,
             "-f", key_path, "-N", ""
-        ], check=True)
+        ], capture_output=True, text=True, check=True)
+        
         # Set permissions
         os.chmod(ssh_dir, 0o700)
         os.chmod(key_path, 0o600)
@@ -137,13 +140,17 @@ def check_ssh_key_auth() -> dict:
             capture_output=True, text=True, check=False 
         )
         output = (result.stdout + result.stderr).lower()
-        # Treat "successfully authenticated" or "does not provide shell access" as success
+        # GitHub SSH test returns exit code 1 even on successful auth, so check the message content
         if "successfully authenticated" in output or "does not provide shell access" in output or "hi " in output:
-            return {"status": "success", "message": "SSH key is correctly configured and connected to GitHub!"}
+            return {"status": "success", "message": "SSH key authentication successful! You're connected to GitHub."}
+        elif "permission denied" in output:
+            return {"status": "error", "message": "SSH key authentication failed. The key may not be added to GitHub or is incorrect."}
         else:
-            return {"status": "warning", "message": result.stdout.strip() or result.stderr.strip()}
+            # Show the actual output for debugging, but mark as warning since it's unclear
+            actual_output = result.stdout.strip() or result.stderr.strip()
+            return {"status": "warning", "message": f"Unclear SSH authentication result: {actual_output}"}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        return {"status": "error", "message": f"Failed to test SSH authentication: {str(e)}"}
 
 
 def add_ssh_key_to_github(pubkey: str, pat: str) -> str:
