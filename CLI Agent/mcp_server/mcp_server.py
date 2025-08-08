@@ -12,6 +12,7 @@ from collections import deque
 from tools.code_generator import generate_code
 from tools.installers.mac import install_mac_tool
 from tools.installers.windows import install_windows_tool, install_windows_tool_by_id
+from tools.utils.name_resolver import resolve_tool_name
 from tools.installers.linux import install_linux_tool
 from tools.uninstallers.mac import uninstall_mac_tool
 from tools.uninstallers.windows import uninstall_windows_tool
@@ -61,27 +62,12 @@ def install_tool(tool, version="latest"):
     
     # Handle Linux-to-Windows package mapping
     if os_type == "windows":
-        # Map Linux package names to Windows package IDs
-        linux_to_windows = {
-            "docker.io": "Docker.DockerDesktop",
-            "slack-desktop": "SlackTechnologies.Slack",
-            "intellij-idea-community": "JetBrains.IntelliJIDEA.Community",
-            "pycharm-community": "JetBrains.PyCharm.Community",
-            "vscode": "Microsoft.VisualStudioCode",
-            "code": "Microsoft.VisualStudioCode",
-            "nodejs": "OpenJS.NodeJS",
-            "python3": "Python.Python.3",
-            "default-jdk": "Oracle.JDK",
-            "eclipse": "Eclipse.IDE",
-            "neovim": "Neovim.Neovim"
-        }
-        
-        if tool in linux_to_windows:
-            mapped_tool = linux_to_windows[tool]
-            add_log_entry("INFO", f"Mapped Linux package '{tool}' to Windows package '{mapped_tool}'")
-            result = install_windows_tool_by_id(mapped_tool, version)
-        else:
-            result = install_windows_tool(tool, version)
+       # Resolve a user/LLM-provided name to a generic Windows-friendly search term (no hardcoded IDs)
+        resolved = resolve_tool_name(tool, "windows", version, "install")
+        search_term = resolved.get("name", tool)
+        add_log_entry("INFO", f"Resolved '{tool}' to Windows search term '{search_term}'")
+        # Let the Windows installer perform a search and handle ambiguities
+        result = install_windows_tool(search_term, version)
     elif os_type == "darwin":
         result = install_mac_tool(tool, version)
     elif os_type == "linux":
