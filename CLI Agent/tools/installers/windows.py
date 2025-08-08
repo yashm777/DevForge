@@ -1,3 +1,39 @@
+def format_installer_output(raw: str) -> str:
+    """Clean up and summarize installer output for user-friendly display."""
+    # Only keep lines with key status messages, filter out progress bars and symbol-only lines
+    import re
+    lines = raw.splitlines()
+    keep = []
+    for line in lines:
+        l = line.strip()
+        if not l:
+            continue
+        # Filter out lines that are mostly symbols (progress bars)
+        if re.fullmatch(r"[-\\/|]+", l):
+            continue
+        if re.fullmatch(r"[â–ˆ]+.*", l):
+            continue
+        # Keep lines with these keywords
+        if (
+            l.startswith("Found ") or
+            l.startswith("Downloading ") or
+            l.startswith("Successfully installed") or
+            l.startswith("Successfully verified installer hash") or
+            l.startswith("Starting package install") or
+            l.startswith("This application is licensed") or
+            l.startswith("Microsoft is not responsible") or
+            l.startswith("Version ") or
+            l.startswith("Install") or
+            l.startswith("Installed ")
+        ):
+            keep.append(l)
+        # Also keep lines with MB progress for download
+        elif "MB /" in l:
+            keep.append(l)
+    # If nothing found, fallback to first and last lines
+    if not keep and lines:
+        keep = [lines[0], lines[-1]]
+    return "\n".join(keep)
 import subprocess
 import re
 
@@ -92,7 +128,7 @@ def install_windows_tool(tool, version="latest"):
         result = subprocess.run(cmd, capture_output=True, text=True)
         output = result.stdout + "\n" + result.stderr
         if result.returncode == 0:
-            return {"status": "success", "message": result.stdout.strip() or f"Installed {tool}"}
+            return {"status": "success", "message": f"Installed {tool}"}
         else:
             # Check if error is due to multiple packages found
             if "Multiple packages found matching input criteria" in output:
@@ -150,7 +186,7 @@ def install_windows_tool_by_id(package_id, version="latest"):
         result = subprocess.run(cmd, capture_output=True, text=True)
         output = result.stdout + "\n" + result.stderr
         if result.returncode == 0:
-            return {"status": "success", "message": result.stdout.strip() or f"Installed {package_id}"}
+            return {"status": "success", "message": f"Installed {package_id}"}
         else:
             # Check if error is due to multiple packages found
             if "Multiple packages found matching input criteria" in output:
