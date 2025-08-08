@@ -95,18 +95,28 @@ def generate_ssh_key(email: str, key_path: str = "~/.ssh/id_rsa"):
 def get_public_key(key_path: str = "~/.ssh/id_rsa"):
     """Return the public SSH key as a string if it exists; if not, return instructions to generate it."""
     pub_key_path = os.path.expanduser(key_path) + ".pub"
-    if os.path.exists(pub_key_path):
-        try:
-            with open(pub_key_path, "r") as f:
-                public_key = f.read().strip()
-            msg = f"Your SSH public key ({pub_key_path}):\n{public_key}\n\nCopy the above key and add it at: https://github.com/settings/ssh/new\n"
-            return msg
-        except Exception as e:
-            return f"Error reading public key: {e}"
-    else:
-        return ("SSH public key not found.\n"
-                "Generate one with: action=generate_ssh_key and provide your email, e.g.\n"
-                "Example: git_setup action=generate_ssh_key email=you@example.com")
+    if not os.path.exists(pub_key_path):
+        return (
+            "SSH public key not found.\n"
+            "Generate one with: action=generate_ssh_key and provide your email, e.g.\n"
+            "Example: git_setup action=generate_ssh_key email=you@example.com"
+        )
+    try:
+        with open(pub_key_path, "r") as f:
+            public_key = f.read().strip()
+        if not public_key:
+            return f"Public key file exists but is empty: {pub_key_path}"
+        msg = (
+            f"Your SSH public key ({pub_key_path}):\n{public_key}\n\n"
+            "Copy the above key and add it at: https://github.com/settings/ssh/new\n"
+        )
+        return msg
+    except FileNotFoundError:
+        return f"Public key file not found at {pub_key_path}. Please generate your SSH key."
+    except PermissionError:
+        return f"Permission denied when reading public key file: {pub_key_path}"
+    except Exception as e:
+        return f"Error reading public key: {e}"
 
 
 def add_ssh_key_to_github_or_manual(email: str, pat: str = None, key_path: str = "~/.ssh/id_rsa"):
