@@ -26,7 +26,7 @@ def is_package_installed(pkg_name: str, pkg_manager: str) -> bool:
                 capture_output=True, text=True
             )
             return pkg_name in result.stdout
-        return True  # fallback
+        return True  
     except Exception as e:
         logger.warning(f"Failed to check if {pkg_name} is installed: {e}")
         return False
@@ -72,7 +72,7 @@ def uninstall_with_sdkman(candidate: str, version: str = None) -> dict:
         return {"status": "error", "message": f"SDKMAN! uninstall failed: {e}"}
 
 def uninstall_linux_tool(tool: str, version: str | None = None):
-    success, failed = [], []
+    success, failed = []
 
     distro = get_linux_distro()
     pkg_manager = get_available_package_manager()
@@ -113,5 +113,3 @@ def uninstall_linux_tool(tool: str, version: str | None = None):
             "status": "success",
             "message": f"Uninstalled: {success}" if success else f"Nothing to uninstall. Packages not found."
         }
-
-

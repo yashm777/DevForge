@@ -59,23 +59,64 @@ def generate_ssh_key(email: str, key_path: str = "~/.ssh/id_rsa"):
     if not os.path.exists(ssh_dir):
         os.makedirs(ssh_dir, mode=0o700)
     if not os.path.exists(key_path):
-        # generate new key
-        subprocess.run([
-            "ssh-keygen", "-t", "rsa", "-b", "4096", "-C", email,
-            "-f", key_path, "-N", ""
-        ], check=True)
-        logging.info("SSH key generated successfully.")
-        pub_key_path = key_path + ".pub"
-        if not os.path.exists(pub_key_path):
-            raise RuntimeError("Public key file not found after generation.")
-        with open(pub_key_path, "r") as pubkey_file:
-            pubkey = pubkey_file.read()
-        logging.info("\nYour new SSH public key:\n")
-        print(pubkey)
-        return {"status": "success", "message": f"SSH key generated at {key_path}"}
+        try:
+            # Generate new key with proper error handling
+            result = subprocess.run([
+                "ssh-keygen", "-t", "rsa", "-b", "4096", "-C", email,
+                "-f", key_path, "-N", ""
+            ], capture_output=True, text=True, timeout=30)
+            
+            # Check if the key generation was successful by verifying file existence
+            pub_key_path = key_path + ".pub"
+            if os.path.exists(key_path) and os.path.exists(pub_key_path):
+                logging.info("SSH key generated successfully.")
+                with open(pub_key_path, "r") as pubkey_file:
+                    pubkey = pubkey_file.read()
+                logging.info("\nYour new SSH public key:\n")
+                print(pubkey)
+                # If there was a SIGPIPE or other error, log it as a warning but still return success
+                if result.returncode != 0:
+                    logging.warning(f"ssh-keygen returned non-zero exit code: {result.returncode}. Output: {result.stderr or result.stdout}")
+                return {"status": "success", "message": f"SSH key generated at {key_path}", "public_key": pubkey}
+            else:
+                # If files don't exist, there was an error
+                error_msg = result.stderr or result.stdout or "Unknown error during key generation"
+                return {"status": "error", "message": f"Failed to generate SSH key: {error_msg}"}
+                
+        except subprocess.TimeoutExpired:
+            return {"status": "error", "message": "SSH key generation timed out"}
+        except Exception as e:
+            return {"status": "error", "message": f"Unexpected error during SSH key generation: {str(e)}"}
     else:
         logging.info(f"SSH key already exists at: {key_path}")
         return {"status": "warning", "message": f"SSH key already exists at {key_path}. Generation skipped."}
+
+
+def get_public_key(key_path: str = "~/.ssh/id_rsa"):
+    """Return the public SSH key as a string if it exists; if not, return instructions to generate it."""
+    pub_key_path = os.path.expanduser(key_path) + ".pub"
+    if not os.path.exists(pub_key_path):
+        return (
+            "SSH public key not found.\n"
+            "Generate one with: action=generate_ssh_key and provide your email, e.g.\n"
+            "Example: git_setup action=generate_ssh_key email=you@example.com"
+        )
+    try:
+        with open(pub_key_path, "r") as f:
+            public_key = f.read().strip()
+        if not public_key:
+            return f"Public key file exists but is empty: {pub_key_path}"
+        msg = (
+            f"Your SSH public key ({pub_key_path}):\n{public_key}\n\n"
+            "Copy the above key and add it at: https://github.com/settings/ssh/new\n"
+        )
+        return msg
+    except FileNotFoundError:
+        return f"Public key file not found at {pub_key_path}. Please generate your SSH key."
+    except PermissionError:
+        return f"Permission denied when reading public key file: {pub_key_path}"
+    except Exception as e:
+        return f"Error reading public key: {e}"
 
 
 def add_ssh_key_to_github_or_manual(email: str, pat: str = None, key_path: str = "~/.ssh/id_rsa"):
@@ -104,16 +145,17 @@ def add_ssh_key_to_github_or_manual(email: str, pat: str = None, key_path: str =
         else:
             manual_msg = (
                 f"❌ Failed to add SSH key via API: {response.text}\n"
-               "Manual steps to add your SSH key to GitHub:\n"
-            "1. Run the following command to display your public key:\n"
-            "   cat ~/.ssh/id_rsa.pub\n"
-            "2. Copy the output.\n"
-            "3. Go to https://github.com/settings/ssh/new\n"
-            "4. Paste the key and save."
+                "Manual steps to add your SSH key to GitHub:\n"
+                "1. Run the following command to display your public key:\n"
+                "   cat ~/.ssh/id_rsa.pub or run 'Show my SSH Key'\n"
+                "2. Copy the output.\n"
+                "3. Go to https://github.com/settings/ssh/new\n"
+                "4. Paste the key and save."
             )
             return {"status": "warning", "message": manual_msg}
     else:
         manual_msg = (
+            "Personal Access Token was not provided.\n"
             "Manual steps to add your SSH key to GitHub:\n"
             "1. Run the following command to display your public key:\n"
             "   cat ~/.ssh/id_rsa.pub\n"
@@ -202,7 +244,7 @@ def perform_git_setup(
 ):
     """
     Entry point to perform git-related tasks. Handles pre-checks and executes action.
-    Actions supported: 'clone', 'generate_ssh_key', 'add_ssh_key', 'check_ssh_key_auth'
+    Actions supported: 'clone', 'generate_ssh_key', 'get_public_key', 'add_ssh_key', 'check_ssh_key_auth'
     """
     if not is_git_installed():
         return {"status": "error", "message": "Git is not installed on this system."}
@@ -215,6 +257,10 @@ def perform_git_setup(
             result["action"] = action
             result["details"] = {"email": email}
             return result
+
+        elif action == "get_public_key":
+            msg = get_public_key()
+            return {"status": "success", "action": action, "message": msg}
 
         elif action == "clone":
             if not repo_url:
@@ -247,8 +293,12 @@ def perform_git_setup(
             result = check_ssh_key_auth()
             return {"status": result.get("status", "error"), "action": action, "details": result}
 
+        elif action == "check_ssh":
+            result = check_ssh_key_auth()
+            return {"status": result.get("status", "error"), "action": action, "details": result}
+
         else:
-            valid_actions = ['clone', 'generate_ssh_key', 'add_ssh_key', 'check_ssh_key_auth']
+            valid_actions = ['clone', 'generate_ssh_key', 'get_public_key', 'add_ssh_key', 'check_ssh_key_auth', 'check_ssh']
             return {"status": "error", "message": f"Unsupported action: {action}. Valid actions are: {', '.join(valid_actions)}"}
     except Exception as e:
         logging.error("Git setup error: %s", str(e))

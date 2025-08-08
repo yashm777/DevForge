@@ -29,7 +29,9 @@ def format_result(result: Dict[str, Any]) -> str:
     """Format the result object, but passthrough git_setup messages as-is."""
     if isinstance(result, dict):
         # Only passthrough for git-related actions
+
         git_actions = {"generate_ssh_key", "add_ssh_key", "clone", "check_ssh_key_auth", "show_ssh_key"}
+
         if result.get("action") in git_actions:
             # Prefer details.message if present
             if "details" in result and isinstance(result["details"], dict):
