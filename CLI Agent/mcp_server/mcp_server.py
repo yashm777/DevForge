@@ -13,18 +13,23 @@ from tools.code_generator import generate_code
 from tools.installers.mac import install_mac_tool
 from tools.installers.windows import install_windows_tool, install_windows_tool_by_id
 from tools.installers.linux import install_linux_tool
-from tools.installers.vscode_extension import install_extension as install_vscode_extension_tool, uninstall_extension as uninstall_vscode_extension_tool
 from tools.uninstallers.mac import uninstall_mac_tool
 from tools.uninstallers.windows import uninstall_windows_tool
 from tools.uninstallers.linux import uninstall_linux_tool
 from tools.version_checkers.mac import check_version_mac_tool
-from tools.uninstallers.linux import uninstall_linux_tool
 from tools.version_checkers.windows import check_version as check_version_windows
 from tools.version_checkers.linux import check_version as check_version_linux
 from tools.upgraders.mac import upgrade_mac_tool
 from tools.upgraders.windows import handle_tool
 from tools.upgraders.linux import handle_tool
-from tools.installers.vscode_extension import install_extension as install_vscode_extension_tool, uninstall_extension as uninstall_vscode_extension_tool
+
+# Platform-specific VS Code extension imports
+if platform.system().lower() == "darwin":
+    from tools.installers.vscode_extension_mac import install_mac_vscode_extension as install_vscode_extension_tool, uninstall_mac_vscode_extension as uninstall_vscode_extension_tool
+else:
+    # Default to Windows version for Windows and Linux
+    from tools.installers.vscode_extension import install_extension as install_vscode_extension_tool, uninstall_extension as uninstall_vscode_extension_tool
+
 import traceback
 
 # Configure logging
