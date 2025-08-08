@@ -1,3 +1,12 @@
+SDKMAN_TOOLS = {
+    "java": "java",
+    "maven": "maven",
+    "gradle": "gradle",
+    "kotlin": "kotlin",
+    "scala": "scala",
+    # add more as needed
+}
+
 def resolve_tool_name(raw_name: str, os_type: str, version: str = "latest", context: str = "install") -> dict:
     """
     Dynamically resolve the actual package name or executable name from user input tool name + version,
@@ -24,15 +33,6 @@ def resolve_tool_name(raw_name: str, os_type: str, version: str = "latest", cont
         "clion",
         "code",  # vscode snap
         "vscode"
-    }
-
-    SDKMAN_TOOLS = {
-        "java": "java",
-        "maven": "maven",
-        "gradle": "gradle",
-        "kotlin": "kotlin",
-        "scala": "scala",
-        # add more as needed
     }
 
     if os_type == "linux":
