@@ -1,6 +1,7 @@
 import subprocess
 import shutil
 import logging
+import os
 from tools.utils.os_utils import (
     get_os_type,
     get_available_package_manager,
@@ -11,7 +12,7 @@ from tools.utils.os_utils import (
     is_tool_installed,
     run_commands
 )
-from tools.utils.name_resolver import resolve_tool_name
+from tools.utils.name_resolver import resolve_tool_name # <-- import SDKMAN_TOOLS
 from llm_parser.parser import generate_smart_tool_url
 
 logging.basicConfig(level=logging.INFO)
@@ -120,6 +121,44 @@ def install_with_snap(resolved_tool: str, classic_snap: bool = False, fallback_m
     }
 
 
+SDKMAN_TOOLS = {
+    "java": "java",
+    "maven": "maven",
+    "gradle": "gradle",
+    "kotlin": "kotlin",
+    "scala": "scala",
+    # add more as needed
+}
+
+def is_sdkman_available() -> bool:
+    return shutil.which("sdk") is not None or os.path.exists(os.path.expanduser("~/.sdkman/bin/sdk"))
+
+def install_sdkman() -> bool:
+    # Installs SDKMAN! if not present
+    try:
+        install_cmd = (
+            'curl -s "https://get.sdkman.io" | bash && '
+            'source "$HOME/.sdkman/bin/sdkman-init.sh"'
+        )
+        result = subprocess.run(install_cmd, shell=True, executable="/bin/bash")
+        return result.returncode == 0
+    except Exception as e:
+        logger.error(f"Failed to install SDKMAN!: {e}")
+        return False
+
+def install_with_sdkman(candidate: str, version: str = "latest") -> dict:
+    try:
+        cmd = ["sdk", "install", candidate]
+        if version and version != "latest":
+            cmd.append(version)
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode == 0:
+            return {"status": "success", "message": f"Installed {candidate} {version} via SDKMAN!"}
+        else:
+            return {"status": "error", "message": result.stderr or result.stdout}
+    except Exception as e:
+        return {"status": "error", "message": f"SDKMAN! install failed: {e}"}
+
 def install_linux_tool(tool: str, version: str = "latest") -> dict:
     logger.info(f"install_linux_tool called with tool='{tool}', version='{version}'")
 
@@ -156,6 +195,24 @@ def install_linux_tool(tool: str, version: str = "latest") -> dict:
     resolved_tool = resolved.get("name", tool)
     fallback_msg = resolved.get("fallback")
     classic_snap = resolved.get("classic_snap", False)
+
+    # --- SDKMAN! support for specific tools ---
+    sdkman_candidate = SDKMAN_TOOLS.get(tool.lower())
+    if sdkman_candidate:
+        # Use name_resolver to get the right candidate name (for java, version, etc.)
+        sdkman_candidate = resolved.get("sdkman_candidate", sdkman_candidate)
+        if not is_sdkman_available():
+            logger.info("SDKMAN! not found. Attempting to install SDKMAN!")
+            if not install_sdkman():
+                logger.error("SDKMAN! installation failed.")
+                # Continue to package manager/snap/manual fallback
+            else:
+                logger.info("SDKMAN! installed successfully.")
+        if is_sdkman_available():
+            sdkman_result = install_with_sdkman(sdkman_candidate, version)
+            if sdkman_result["status"] == "success":
+                return sdkman_result
+            # If SDKMAN! fails, fall through to package manager/snap/manual
 
     if manager and manager != "unknown":
         if not ensure_package_manager_installed(manager):
