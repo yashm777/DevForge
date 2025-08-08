@@ -40,6 +40,12 @@ logger = logging.getLogger(__name__)
 # In-memory log storage
 server_logs = deque(maxlen=1000)  # Keep last 1000 log entries
 
+def _status_of(result, default: str = "unknown") -> str:
+    """Safely extract a status string from various result shapes."""
+    if isinstance(result, dict):
+        return str(result.get("status", default))
+    return default
+    
 def add_log_entry(level: str, message: str, details: dict = None):
     """Add a log entry to the in-memory log storage"""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
