@@ -12,7 +12,7 @@ from tools.utils.os_utils import (
     is_tool_installed,
     run_commands
 )
-from tools.utils.name_resolver import resolve_tool_name # <-- import SDKMAN_TOOLS
+from tools.utils.name_resolver import resolve_tool_name, SDKMAN_TOOLS
 from llm_parser.parser import generate_smart_tool_url
 
 logging.basicConfig(level=logging.INFO)
@@ -23,12 +23,6 @@ def build_install_command(manager: str, package: str) -> list[list[str]]:
     logger.info(f"Building install command for manager '{manager}' and package '{package}'")
     if manager == "apt":
         return [["sudo", "apt-get", "update"], ["sudo", "apt-get", "install", "-y", package]]
-    elif manager == "dnf":
-        return [["sudo", "dnf", "install", "-y", package]]
-    elif manager == "pacman":
-        return [["sudo", "pacman", "-Sy", "--noconfirm", package]]
-    elif manager == "apk":
-        return [["sudo", "apk", "add", package]]
     else:
         logger.warning(f"Unsupported package manager '{manager}'")
         return []
@@ -36,7 +30,6 @@ def build_install_command(manager: str, package: str) -> list[list[str]]:
 
 def install_with_package_manager(tool: str, resolved_tool: str, manager: str, fallback_msg: str | None = None) -> dict | None:
     logger.info(f"install_with_package_manager called with tool='{tool}', resolved_tool='{resolved_tool}', manager='{manager}'")
-    # Always try resolved_tool first
     resolved_cmds = build_install_command(manager, resolved_tool)
     logger.info(f"Trying to install resolved package '{resolved_tool}' using {manager} with commands: {resolved_cmds}")
     resolved_result = run_commands(resolved_cmds)
@@ -49,29 +42,10 @@ def install_with_package_manager(tool: str, resolved_tool: str, manager: str, fa
         return {
             "status": "success",
             "message": message,
-           # "stdout": resolved_result.stdout.strip(),
             "warnings": resolved_result.stderr.strip() or None
         }
 
     logger.warning(f"Resolved install failed for '{resolved_tool}': {resolved_result.stderr.strip() if resolved_result else 'Unknown error'}")
-
-    # Only try raw tool name if it's different from resolved
-    if resolved_tool != tool:
-        raw_cmds = build_install_command(manager, tool)
-        logger.info(f"Falling back to install raw tool '{tool}' using {manager} with commands: {raw_cmds}")
-        raw_result = run_commands(raw_cmds)
-
-        if raw_result and raw_result.returncode == 0:
-            logger.info(f"Successfully installed '{tool}' via {manager} (fallback).")
-            return {
-                "status": "success",
-                "message": f"Installed '{tool}' via {manager} (fallback).",
-              #  "stdout": raw_result.stdout.strip(),
-                "warnings": raw_result.stderr.strip() or None
-            }
-
-        logger.warning(f"Raw install failed for '{tool}': {raw_result.stderr.strip() if raw_result else 'Unknown error'}")
-
     return None
 
 
@@ -107,7 +81,6 @@ def install_with_snap(resolved_tool: str, classic_snap: bool = False, fallback_m
         return {
             "status": "success",
             "message": message,
-          #  "stdout": snap_result.stdout.strip(),
             "warnings": snap_result.stderr.strip() or None
         }
 
@@ -121,21 +94,29 @@ def install_with_snap(resolved_tool: str, classic_snap: bool = False, fallback_m
     }
 
 
-SDKMAN_TOOLS = {
-    "java": "java",
-    "maven": "maven",
-    "gradle": "gradle",
-    "kotlin": "kotlin",
-    "scala": "scala",
-    # add more as needed
-}
-
 def is_sdkman_available() -> bool:
     return shutil.which("sdk") is not None or os.path.exists(os.path.expanduser("~/.sdkman/bin/sdk"))
 
+
+def ensure_curl_installed() -> bool:
+    if shutil.which("curl"):
+        return True
+    logger.info("curl not found. Attempting to install curl.")
+    manager = get_available_package_manager()
+    if manager == "apt":
+        subprocess.run(["sudo", "apt-get", "update"])
+        result = subprocess.run(["sudo", "apt-get", "install", "-y", "curl"])
+    else:
+        logger.error("No supported package manager found to install curl.")
+        return False
+    return result.returncode == 0
+
+
 def install_sdkman() -> bool:
-    # Installs SDKMAN! if not present
     try:
+        if not ensure_curl_installed():
+            logger.error("curl is required to install SDKMAN! but could not be installed.")
+            return False
         install_cmd = (
             'curl -s "https://get.sdkman.io" | bash && '
             'source "$HOME/.sdkman/bin/sdkman-init.sh"'
@@ -145,6 +126,7 @@ def install_sdkman() -> bool:
     except Exception as e:
         logger.error(f"Failed to install SDKMAN!: {e}")
         return False
+
 
 def install_with_sdkman(candidate: str, version: str = "latest") -> dict:
     try:
@@ -158,6 +140,7 @@ def install_with_sdkman(candidate: str, version: str = "latest") -> dict:
             return {"status": "error", "message": result.stderr or result.stdout}
     except Exception as e:
         return {"status": "error", "message": f"SDKMAN! install failed: {e}"}
+
 
 def install_linux_tool(tool: str, version: str = "latest") -> dict:
     logger.info(f"install_linux_tool called with tool='{tool}', version='{version}'")
@@ -199,29 +182,26 @@ def install_linux_tool(tool: str, version: str = "latest") -> dict:
     # --- SDKMAN! support for specific tools ---
     sdkman_candidate = SDKMAN_TOOLS.get(tool.lower())
     if sdkman_candidate:
-        # Use name_resolver to get the right candidate name (for java, version, etc.)
         sdkman_candidate = resolved.get("sdkman_candidate", sdkman_candidate)
         if not is_sdkman_available():
             logger.info("SDKMAN! not found. Attempting to install SDKMAN!")
             if not install_sdkman():
                 logger.error("SDKMAN! installation failed.")
-                # Continue to package manager/snap/manual fallback
             else:
                 logger.info("SDKMAN! installed successfully.")
         if is_sdkman_available():
             sdkman_result = install_with_sdkman(sdkman_candidate, version)
             if sdkman_result["status"] == "success":
                 return sdkman_result
-            # If SDKMAN! fails, fall through to package manager/snap/manual
 
-    if manager and manager != "unknown":
+    # Only support apt and snap as package managers
+    if manager == "apt":
         if not ensure_package_manager_installed(manager):
             logger.error(f"Package manager '{manager}' not available and could not be installed")
             return {
                 "status": "error",
                 "message": f"Required package manager '{manager}' is not available and could not be installed automatically. Please install it manually."
             }
-
         result = install_with_package_manager(tool, resolved_tool, manager, fallback_msg)
         if result:
             return result
