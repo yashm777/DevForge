@@ -25,7 +25,7 @@ def is_package_installed(pkg_name: str, pkg_manager: str) -> bool:
                 capture_output=True, text=True
             )
             return pkg_name in result.stdout
-        return True  # fallback
+        return True  
     except Exception as e:
         logger.warning(f"Failed to check if {pkg_name} is installed: {e}")
         return False
@@ -125,6 +125,16 @@ def uninstall_linux_tool(tool: str, version: str | None = None):
                     success.append(pkg)
                 else:
                     failed.append(pkg)
+        elif is_snap_available():
+            # Try snap uninstall if not found in apt/dnf
+            if is_package_installed(pkg_name, "snap"):
+                if run_uninstall_cmd(pkg_name, "snap"):
+                    success.append(pkg_name)
+                else:
+                    failed.append(pkg_name)
+            else:
+                logger.info(f"{pkg_name} is not installed via snap. Skipping.")
+                failed.append(pkg_name)
         else:
             logger.info(f"{pkg_name} is not installed. Skipping.")
             failed.append(pkg_name)
@@ -139,5 +149,3 @@ def uninstall_linux_tool(tool: str, version: str | None = None):
             "status": "success",
             "message": f"Uninstalled: {success}" if success else f"Nothing to uninstall. Packages not found."
         }
-        
-    
