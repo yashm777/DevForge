@@ -137,7 +137,20 @@ def resolve_tool_name(raw_name: str, os_type: str, version: str = "latest", cont
             "docker": "docker" if context == "version_check" else "Docker Desktop",
             "intellij": "idea64.exe" if context == "version_check" else "IntelliJ IDEA Community Edition",
             "pycharm": "pycharm64.exe" if context == "version_check" else "PyCharm Community Edition",
-            "eclipse": "eclipse.exe" if context == "version_check" else "Eclipse IDE"
+            "eclipse": "eclipse.exe" if context == "version_check" else "Eclipse IDE",
+            # Slack mappings (handle Linux-style name on Windows)
+            "slack": "Slack",
+            "slack-desktop": "Slack",
+            # Handle Linux-style Java names generically for Windows winget search
+            "default-jdk": "OpenJDK",
+            "openjdk": "OpenJDK",
+            "java-jdk": "OpenJDK",
+            "jdk": "JDK" if context != "version_check" else "java"
+        }
+
+        # Handle versioned Linux names like 'openjdk-17-jdk' by mapping to a generic search term
+        if normalized.startswith("openjdk-") and normalized.endswith("-jdk") and context != "version_check":
+            return {"name": "OpenJDK", "fallback": None, "classic_snap": False}
         }
         resolved_name = name_map.get(normalized, raw_name)
         return {"name": resolved_name, "fallback": None, "classic_snap": False}
