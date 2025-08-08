@@ -74,6 +74,9 @@ def generate_ssh_key(email: str, key_path: str = "~/.ssh/id_rsa"):
                     pubkey = pubkey_file.read()
                 logging.info("\nYour new SSH public key:\n")
                 print(pubkey)
+                # If there was a SIGPIPE or other error, log it as a warning but still return success
+                if result.returncode != 0:
+                    logging.warning(f"ssh-keygen returned non-zero exit code: {result.returncode}. Output: {result.stderr or result.stdout}")
                 return {"status": "success", "message": f"SSH key generated at {key_path}", "public_key": pubkey}
             else:
                 # If files don't exist, there was an error
@@ -82,9 +85,6 @@ def generate_ssh_key(email: str, key_path: str = "~/.ssh/id_rsa"):
                 
         except subprocess.TimeoutExpired:
             return {"status": "error", "message": "SSH key generation timed out"}
-        except subprocess.CalledProcessError as e:
-            error_msg = e.stderr or e.stdout or str(e)
-            return {"status": "error", "message": f"Failed to generate SSH key: {error_msg}"}
         except Exception as e:
             return {"status": "error", "message": f"Unexpected error during SSH key generation: {str(e)}"}
     else:
