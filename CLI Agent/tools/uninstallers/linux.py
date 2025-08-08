@@ -20,12 +20,6 @@ def is_package_installed(pkg_name: str, pkg_manager: str) -> bool:
                 capture_output=True, text=True
             )
             return "install ok installed" in result.stdout
-        elif pkg_manager == "dnf":
-            result = subprocess.run(
-                ["dnf", "list", "installed", pkg_name],
-                capture_output=True, text=True
-            )
-            return pkg_name in result.stdout
         elif pkg_manager == "snap":
             result = subprocess.run(
                 ["snap", "list", pkg_name],
@@ -41,8 +35,6 @@ def run_uninstall_cmd(tool_name: str, manager: str) -> bool:
     try:
         if manager == "apt":
             cmd = ["apt-get", "purge", "-y", tool_name]
-        elif manager == "dnf":
-            cmd = ["dnf", "remove", "-y", tool_name]
         elif manager == "snap" and is_snap_available():
             cmd = ["snap", "remove", tool_name]
         else:
