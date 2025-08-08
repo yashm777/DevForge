@@ -112,7 +112,9 @@ def resolve_tool_name(raw_name: str, os_type: str, version: str = "latest", cont
             "intellij-idea-community": "intellij-idea-ce",  # Map Linux name to Mac name
             "pycharm": "pycharm-ce", 
             "pycharm-community": "pycharm-ce",  # Map Linux name to Mac name
-            "eclipse": "eclipse-java"
+            "eclipse": "eclipse-java",
+            "spotify": "spotify",  # Ensure spotify maps to correct cask name
+            "spotify-client": "spotify"  # Fix LLM's incorrect spotify-client mapping
         }
 
         resolved_name = name_map.get(normalized, raw_name)

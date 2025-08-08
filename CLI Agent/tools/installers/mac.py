@@ -46,9 +46,15 @@ def install_mac_tool(tool_name, version="latest"):
         manager = get_manager()
         
         # Build tool specification
-        if version != "latest":
+        # Check if the resolved name already includes a version (like node@16)
+        if "@" in resolved_tool_name:
+            # Already has version, use as-is
+            tool_spec = resolved_tool_name
+        elif version != "latest":
+            # Add version to the resolved name
             tool_spec = f"{resolved_tool_name}@{version}"
         else:
+            # Use resolved name as-is for latest
             tool_spec = resolved_tool_name
         
         # Install using the enhanced manager

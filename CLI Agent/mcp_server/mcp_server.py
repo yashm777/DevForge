@@ -13,18 +13,23 @@ from tools.code_generator import generate_code
 from tools.installers.mac import install_mac_tool
 from tools.installers.windows import install_windows_tool, install_windows_tool_by_id
 from tools.installers.linux import install_linux_tool
-from tools.installers.vscode_extension import install_extension as install_vscode_extension_tool, uninstall_extension as uninstall_vscode_extension_tool
 from tools.uninstallers.mac import uninstall_mac_tool
 from tools.uninstallers.windows import uninstall_windows_tool
 from tools.uninstallers.linux import uninstall_linux_tool
 from tools.version_checkers.mac import check_version_mac_tool
-from tools.uninstallers.linux import uninstall_linux_tool
 from tools.version_checkers.windows import check_version as check_version_windows
 from tools.version_checkers.linux import check_version as check_version_linux
 from tools.upgraders.mac import upgrade_mac_tool
 from tools.upgraders.windows import handle_tool
 from tools.upgraders.linux import handle_tool
-from tools.installers.vscode_extension import install_extension as install_vscode_extension_tool, uninstall_extension as uninstall_vscode_extension_tool
+
+# Platform-specific VS Code extension imports
+if platform.system().lower() == "darwin":
+    from tools.installers.vscode_extension_mac import install_mac_vscode_extension as install_vscode_extension_tool, uninstall_mac_vscode_extension as uninstall_vscode_extension_tool
+else:
+    # Default to Windows version for Windows and Linux
+    from tools.installers.vscode_extension import install_extension as install_vscode_extension_tool, uninstall_extension as uninstall_vscode_extension_tool
+
 import traceback
 
 # Configure logging
@@ -185,6 +190,8 @@ def handle_system_config(tool, action="check", value=None):
         from tools.system_config import windows as sys_tool
     elif os_type == "linux":
         from tools.system_config import linux as sys_tool
+    elif os_type == "darwin":  # macOS
+        from tools.system_config import mac as sys_tool
     else:
         return {"status": "error", "message": f"System config tools not implemented for {os_type}"}
 
@@ -224,7 +231,21 @@ def handle_git_setup(action, repo_url="", branch="", username="", email="", dest
                 username=username,
                 email=email,
                 dest_dir=dest_dir,
-                pat=pat  # <-- Add this line
+                pat=pat
+            )
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+    elif os_type == "darwin":  # macOS
+        try:
+            from tools.git_configurator.mac import perform_git_setup
+            return perform_git_setup(
+                action=action,
+                repo_url=repo_url,
+                branch=branch,
+                username=username,
+                email=email,
+                dest_dir=dest_dir,
+                pat=pat
             )
         except Exception as e:
             return {"status": "error", "message": str(e)}

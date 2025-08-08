@@ -178,6 +178,48 @@ class MacToolManager:
         else:
             return "unknown"
     
+    def smart_package_resolution(self, name: str) -> tuple[str, str]:
+        """
+        Intelligently resolve package names by trying multiple variants.
+        
+        Returns:
+            tuple: (resolved_name, package_type) or (original_name, "unknown")
+        """
+        base_name = name.split('@')[0].lower()
+        
+        # Try exact name first
+        classification = self.classify_package(name)
+        if classification != "unknown":
+            return name, classification
+            
+        # Try common variants for popular apps
+        variants_to_try = []
+        
+        # For apps that might have -client suffix incorrectly
+        if base_name.endswith('-client'):
+            variants_to_try.append(base_name[:-7])  # Remove -client
+            
+        # For development tools that might need community edition
+        if base_name in ['intellij', 'pycharm', 'webstorm']:
+            variants_to_try.extend([
+                f"{base_name}-idea-ce",
+                f"{base_name}-community", 
+                f"{base_name}-ce"
+            ])
+            
+        # For browsers and media apps
+        if base_name in ['chrome', 'google-chrome']:
+            variants_to_try.extend(['google-chrome', 'chrome'])
+            
+        # Try each variant
+        for variant in variants_to_try:
+            classification = self.classify_package(variant)
+            if classification != "unknown":
+                logger.info(f"Resolved '{name}' to '{variant}' ({classification})")
+                return variant, classification
+                
+        return name, "unknown"
+    
     def is_upgradable(self, tool_name: str) -> bool:
         """Check if a tool supports version switching."""
         base_name = tool_name.lower().split('@')[0]
@@ -573,9 +615,19 @@ class MacToolManager:
         
         logger.info(f"Installing {tool_name} version {version}")
         
-        # Validate version requirements
-        package_type = self.classify_package(tool_name)
+        # Use smart package resolution
+        resolved_name, package_type = self.smart_package_resolution(tool_name)
         
+        if package_type == "unknown":
+            return {
+                "status": "error",
+                "message": f"{tool_name} is not available via Homebrew. Try: brew search {tool_name}"
+            }
+        
+        # Update tool_name to use resolved name
+        tool_name = resolved_name
+        
+        # Validate version requirements
         if package_type == "tool" and version == "latest" and self.is_upgradable(tool_name):
             return {
                 "status": "error",
@@ -617,6 +669,9 @@ class MacToolManager:
             )
             
             if result.returncode == 0:
+                # Clear cache after successful install to ensure fresh results
+                self._brew_list.cache_clear()
+                
                 # Handle post-install configuration
                 success_details = {
                     "status": "success",
@@ -678,6 +733,9 @@ class MacToolManager:
             )
             
             if result.returncode == 0:
+                # Clear cache after successful upgrade to ensure fresh results
+                self._brew_list.cache_clear()
+                
                 # Check new version - for versioned packages, use Homebrew info
                 if "@" in tool_name:
                     # For versioned packages like openjdk@17, get version from Homebrew
@@ -755,6 +813,9 @@ class MacToolManager:
             )
             
             if result.returncode == 0:
+                # Clear cache after successful uninstall to ensure fresh results
+                self._brew_list.cache_clear()
+                
                 success_msg = f"Successfully uninstalled {tool_name}"
                 
                 # Clean up leftover files for GUI apps

@@ -50,6 +50,33 @@ def format_result(result: Dict[str, Any]) -> str:
         # --- Default formatting for all other tools ---
         status = result.get("status")
         message = result.get("message", "")
+        
+        # Special handling for system_config results
+        if "variable" in result and "value" in result:
+            variable = result.get("variable")
+            value = result.get("value")
+            if status == "success":
+                return f"✓ {variable} = {value}"
+            elif status == "error":
+                return f"✗ {message}" if message else "✗ Environment variable not found"
+        
+        # Special handling for port checking results
+        if "port" in result:
+            port = result.get("port")
+            if status == "success" or status == "free":
+                return f"✓ Port {port} is free"
+            elif status == "in_use":
+                return f"! Port {port} is in use"
+            elif status == "error":
+                return f"✗ {message}" if message else f"✗ Error checking port {port}"
+        
+        # Special handling for environment variable listing
+        if "variables" in result and isinstance(result.get("variables"), dict):
+            var_count = len(result["variables"])
+            if status == "success":
+                return f"✓ Found {var_count} environment variables"
+            
+        # Default formatting
         if status == "success":
             return f"✓ {message}" if message else "✓ Operation completed successfully"
         elif status == "error":
@@ -147,7 +174,9 @@ def run(
                     else:
                         console.print("[red]No package options found in ambiguous result.[/red]")
                 else:
-                    formatted_result = format_result(result)
+                    # Extract the inner result for proper formatting
+                    result_data = result.get("result", result)
+                    formatted_result = format_result(result_data)
                     console.print(Panel(formatted_result, title=f"Install {tool_name}", border_style="green"))
                 continue
             
@@ -157,7 +186,9 @@ def run(
                     "task": "install_vscode_extension",
                     "extension_id": extension_id
                 })
-                formatted_result = format_result(result)
+                # Extract the inner result for proper formatting
+                result_data = result.get("result", result)
+                formatted_result = format_result(result_data)
                 console.print(Panel(formatted_result, title=f"Install VSCode Extension", border_style="green"))
                 continue
                 
@@ -166,7 +197,9 @@ def run(
                 result = mcp_client.call_jsonrpc("uninstall_vscode_extension", {
                     "extension_id": extension_id
                 })
-                formatted_result = format_result(result)
+                # Extract the inner result for proper formatting
+                result_data = result.get("result", result)
+                formatted_result = format_result(result_data)
                 console.print(Panel(formatted_result, title=f"Uninstall VSCode Extension", border_style="green"))
                 continue
 
