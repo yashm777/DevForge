@@ -25,6 +25,8 @@ def resolve_tool_name(raw_name: str, os_type: str, version: str = "latest", cont
         "vscode"
     }
 
+ 
+
     if os_type == "linux":
         if normalized == "java":
             if context == "version_check":
