@@ -21,8 +21,8 @@ from tools.version_checkers.mac import check_version_mac_tool
 from tools.version_checkers.windows import check_version as check_version_windows
 from tools.version_checkers.linux import check_version as check_version_linux
 from tools.upgraders.mac import upgrade_mac_tool
-from tools.upgraders.windows import handle_tool
-from tools.upgraders.linux import handle_tool
+from tools.upgraders.windows import handle_tool as handle_tool_windows
+from tools.upgraders.linux import handle_tool as handle_tool_linux
 
 # Platform-specific VS Code extension imports
 if platform.system().lower() == "darwin":
@@ -142,11 +142,11 @@ def upgrade_tool(tool, version="latest"):
     add_log_entry("INFO", f"Upgrade request for tool: {tool} (version: {version})")
     os_type = platform.system().lower()
     if os_type == "windows":
-        result = handle_tool(tool, version)
+        result = handle_tool_windows(tool, version)
     elif os_type == "darwin":
         result = upgrade_mac_tool(tool, version)
     elif os_type == "linux":
-        result = handle_tool(tool, version)
+        result = handle_tool_linux(tool, version)
     else:
         result = {"status": "error", "message": f"Unsupported OS: {os_type}"}
     
