@@ -151,7 +151,6 @@ def resolve_tool_name(raw_name: str, os_type: str, version: str = "latest", cont
         # Handle versioned Linux names like 'openjdk-17-jdk' by mapping to a generic search term
         if normalized.startswith("openjdk-") and normalized.endswith("-jdk") and context != "version_check":
             return {"name": "OpenJDK", "fallback": None, "classic_snap": False}
-        }
         resolved_name = name_map.get(normalized, raw_name)
         return {"name": resolved_name, "fallback": None, "classic_snap": False}
 
