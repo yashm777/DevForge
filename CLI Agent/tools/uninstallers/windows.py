@@ -16,13 +16,25 @@ def format_uninstaller_output(raw: str) -> str:
             l.startswith("Found ") or
             l.startswith("Starting package uninstall") or
             l.startswith("Successfully uninstalled") or
-            l.startswith("Uninstalled ")
+            l.startswith("Uninstalled ") or
+            "no package found" in l.lower() or
+            "no installed package found" in l.lower() or
+            "no available uninstall" in l.lower() or
+            "no installed package matching input criteria" in l.lower()
         ):
             keep.append(l)
         elif "MB /" in l:
             keep.append(l)
+    # If nothing found, try to find any error or info line
     if not keep and lines:
-        keep = [lines[0], lines[-1]]
+        for l in lines:
+            if "error" in l.lower() or "not found" in l.lower():
+                keep.append(l.strip())
+        # If still nothing, fallback to first and last non-empty line
+        if not keep:
+            filtered = [x for x in lines if x.strip()]
+            if filtered:
+                keep = [filtered[0].strip(), filtered[-1].strip()]
     return "\n".join(keep)
 import subprocess
 

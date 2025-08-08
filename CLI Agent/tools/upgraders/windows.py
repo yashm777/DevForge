@@ -192,6 +192,43 @@ def handle_tool(tool, version: str = "latest"):
             "message": "winget is not available on this system. Please install App Installer (winget)."
         }
 
+    def format_upgrade_output(raw: str) -> str:
+        """Clean up and summarize upgrader output for user-friendly display."""
+        import re
+        lines = raw.splitlines()
+        keep = []
+        for line in lines:
+            l = line.strip()
+            if not l:
+                continue
+            # Remove lines that are just symbols, dashes, slashes, or pipes
+            if re.fullmatch(r"[-\\/| ]+", l):
+                continue
+            if re.fullmatch(r"[â–ˆ]+.*", l):
+                continue
+            # Only keep lines with meaningful status
+            if (
+                "Found an existing package" in l or
+                "Trying to upgrade" in l or
+                "No available upgrade found" in l or
+                "No newer package versions" in l or
+                "Upgraded" in l or
+                "Installed" in l or
+                "Updated" in l or
+                "no newer version available" in l.lower() or
+                "already installed" in l.lower()
+            ):
+                keep.append(l)
+            # Also keep lines with MB progress for download
+            elif "MB /" in l:
+                keep.append(l)
+        # If nothing found, fallback to first and last lines that are not just symbols
+        if not keep and lines:
+            filtered = [x for x in lines if not re.fullmatch(r"[-\\/| ]+", x.strip()) and x.strip()]
+            if filtered:
+                keep = [filtered[0], filtered[-1]]
+        return "\n".join(keep)
+
     try:
         installed_version = _get_installed_version(tool)
 
@@ -216,6 +253,7 @@ def handle_tool(tool, version: str = "latest"):
 
         # Proceed to upgrade
         ok, output = _upgrade_via_winget(tool, pkg_id, available_version)
+        cleaned_output = format_upgrade_output(output)
         if not ok:
             # If winget indicates no applicable update (often not winget-managed), attempt install fallback
             lowered = output.lower()
@@ -236,6 +274,7 @@ def handle_tool(tool, version: str = "latest"):
                 if should_try_install:
                     # First attempt: as given (name or id if we have it)
                     ok_i, out_i = _install_via_winget(tool, pkg_id, available_version)
+                    cleaned_out_i = format_upgrade_output(out_i)
                     if not ok_i:
                         # Second attempt: resolve a best candidate ID and retry with --id
                         options = _search_winget_candidates(tool)
@@ -244,6 +283,7 @@ def handle_tool(tool, version: str = "latest"):
                             pkg_id2 = best.get("id")
                             if pkg_id2 and pkg_id2 != pkg_id:
                                 ok_i, out_i = _install_via_winget(tool, pkg_id2, available_version)
+                                cleaned_out_i = format_upgrade_output(out_i)
                                 if ok_i:
                                     pkg_id = pkg_id2
                     if ok_i:
@@ -253,7 +293,7 @@ def handle_tool(tool, version: str = "latest"):
                             msg = f"Updated {tool} from {installed_version} to {new_version} via winget (install fallback)"
                         return {
                             "status": "success",
-                            "message": msg,
+                            "message": msg + (f"\n{cleaned_out_i}" if cleaned_out_i else ""),
                             "installed_version": installed_version,
                             "available_version": available_version,
                             "new_version": new_version,
@@ -285,7 +325,7 @@ def handle_tool(tool, version: str = "latest"):
                     "available_version": available_version,
                     "action": "none",
                 }
-            return {"status": "error", "message": output or f"Failed to upgrade {tool} via winget."}
+            return {"status": "error", "message": cleaned_output or f"Failed to upgrade {tool} via winget."}
 
         # Re-check version after upgrade
         new_version = _get_installed_version(tool) or installed_version
@@ -298,7 +338,7 @@ def handle_tool(tool, version: str = "latest"):
 
         return {
             "status": "success",
-            "message": msg,
+            "message": msg + (f"\n{cleaned_output}" if cleaned_output else ""),
             "installed_version": installed_version,
             "available_version": available_version,
             "new_version": new_version,
