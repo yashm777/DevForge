@@ -1,3 +1,12 @@
+SDKMAN_TOOLS = {
+    "java": "java",
+    "maven": "maven",
+    "gradle": "gradle",
+    "kotlin": "kotlin",
+    "scala": "scala",
+    # add more as needed
+}
+
 def resolve_tool_name(raw_name: str, os_type: str, version: str = "latest", context: str = "install") -> dict:
     """
     Dynamically resolve the actual package name or executable name from user input tool name + version,
@@ -7,7 +16,8 @@ def resolve_tool_name(raw_name: str, os_type: str, version: str = "latest", cont
         dict: {
             "name": resolved_name,
             "fallback": fallback_message (or None),
-            "classic_snap": bool
+            "classic_snap": bool,
+            "sdkman_candidate": str (if applicable)
         }
     """
     normalized = raw_name.lower()
@@ -26,16 +36,15 @@ def resolve_tool_name(raw_name: str, os_type: str, version: str = "latest", cont
     }
 
     if os_type == "linux":
+        sdkman_candidate = SDKMAN_TOOLS.get(normalized)
         if normalized == "java":
             if context == "version_check":
-                # For version checking, return the executable name
-                return {"name": "java", "fallback": None, "classic_snap": False}
+                return {"name": "java", "fallback": None, "classic_snap": False, "sdkman_candidate": sdkman_candidate}
             else:
-                # For install/uninstall context
                 if version.strip() != "latest":
                     package = f"openjdk-{version}-jdk"
-                    return {"name": package, "fallback": None, "classic_snap": False}
-                return {"name": "default-jdk", "fallback": None, "classic_snap": False}
+                    return {"name": package, "fallback": None, "classic_snap": False, "sdkman_candidate": sdkman_candidate}
+                return {"name": "default-jdk", "fallback": None, "classic_snap": False, "sdkman_candidate": sdkman_candidate}
 
         elif normalized == "python":
             if context == "version_check":
@@ -60,16 +69,15 @@ def resolve_tool_name(raw_name: str, os_type: str, version: str = "latest", cont
         resolved_name = name_map.get(normalized, raw_name)
 
         if context == "version_check":
-            # Return executable name for version check where applicable
-            # For example, 'code' is executable for vscode snap
             if normalized == "vscode":
-                return {"name": "code", "fallback": None, "classic_snap": False}
-            return {"name": resolved_name, "fallback": None, "classic_snap": resolved_name in classic_snap_packages}
+                return {"name": "code", "fallback": None, "classic_snap": False, "sdkman_candidate": sdkman_candidate}
+            return {"name": resolved_name, "fallback": None, "classic_snap": resolved_name in classic_snap_packages, "sdkman_candidate": sdkman_candidate}
 
         return {
             "name": resolved_name,
             "fallback": None,
-            "classic_snap": resolved_name in classic_snap_packages
+            "classic_snap": resolved_name in classic_snap_packages,
+            "sdkman_candidate": sdkman_candidate
         }
 
     elif os_type == "darwin":

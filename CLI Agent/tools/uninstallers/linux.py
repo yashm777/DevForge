@@ -1,7 +1,8 @@
 import subprocess
 import shutil
 import logging
-from tools.utils.name_resolver import resolve_tool_name
+import os
+from tools.utils.name_resolver import resolve_tool_name, SDKMAN_TOOLS
 from tools.utils.os_utils import (
     get_linux_distro,
     get_available_package_manager,
@@ -19,9 +20,9 @@ def is_package_installed(pkg_name: str, pkg_manager: str) -> bool:
                 capture_output=True, text=True
             )
             return "install ok installed" in result.stdout
-        elif pkg_manager == "dnf":
+        elif pkg_manager == "snap":
             result = subprocess.run(
-                ["dnf", "list", "installed", pkg_name],
+                ["snap", "list", pkg_name],
                 capture_output=True, text=True
             )
             return pkg_name in result.stdout
@@ -34,8 +35,6 @@ def run_uninstall_cmd(tool_name: str, manager: str) -> bool:
     try:
         if manager == "apt":
             cmd = ["apt-get", "purge", "-y", tool_name]
-        elif manager == "dnf":
-            cmd = ["dnf", "remove", "-y", tool_name]
         elif manager == "snap" and is_snap_available():
             cmd = ["snap", "remove", tool_name]
         else:
@@ -56,38 +55,24 @@ def run_uninstall_cmd(tool_name: str, manager: str) -> bool:
         logger.exception(f"Exception during uninstall: {e}")
         return False
 
-def get_related_packages(alternatives: list[str]) -> list[str]:
-    """
-    Given a list of java binary paths from alternatives,
-    extract related package names like openjdk-17-jdk.
-    """
-    packages = set()
-    for alt in alternatives:
-        parts = alt.split("/")
-        for p in parts:
-            if "jdk" in p or "java" in p:
-                packages.add(p)
-    return list(packages)
+def is_sdkman_available() -> bool:
+    return shutil.which("sdk") is not None or os.path.exists(os.path.expanduser("~/.sdkman/bin/sdk"))
 
-def get_java_alternatives() -> list[str]:
-    """
-    Detect installed Java versions using `update-alternatives`.
-    Returns a list of Java binary paths or identifiers.
-    """
+def uninstall_with_sdkman(candidate: str, version: str = None) -> dict:
     try:
-        result = subprocess.run(
-            ["update-alternatives", "--list", "java"],
-            capture_output=True, text=True
-        )
+        cmd = ["sdk", "uninstall", candidate]
+        if version and version != "latest":
+            cmd.append(version)
+        result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode == 0:
-            return [line.strip() for line in result.stdout.splitlines()]
-    except Exception:
-        pass
-    return []
-
+            return {"status": "success", "message": f"Uninstalled {candidate} {version or ''} via SDKMAN!".strip()}
+        else:
+            return {"status": "error", "message": result.stderr or result.stdout}
+    except Exception as e:
+        return {"status": "error", "message": f"SDKMAN! uninstall failed: {e}"}
 
 def uninstall_linux_tool(tool: str, version: str | None = None):
-    success, failed = [], []
+    success, failed = []
 
     distro = get_linux_distro()
     pkg_manager = get_available_package_manager()
@@ -99,45 +84,24 @@ def uninstall_linux_tool(tool: str, version: str | None = None):
     pkg_name = resolved["name"]
     logger.info(f"Resolved uninstall package: {pkg_name}")
 
-    if pkg_name in ["openjdk", "default-jdk", "jdk", "java", "openjdk-17-jdk", "openjdk-21-jdk"]:
-        alternatives = get_java_alternatives()
-        packages = get_related_packages(alternatives)
-
-        if version:
-            version_filtered = [pkg for pkg in packages if version.replace(" ", "") in pkg.replace("-", "")]
-            combined_packages = list(set(version_filtered + [pkg_name]))
+    # --- SDKMAN! support for specific tools ---
+    sdkman_candidate = resolved.get("sdkman_candidate") or SDKMAN_TOOLS.get(tool.lower())
+    if sdkman_candidate and is_sdkman_available():
+        sdkman_result = uninstall_with_sdkman(sdkman_candidate, version)
+        if sdkman_result["status"] == "success":
+            return sdkman_result
         else:
-            combined_packages = list(set(packages + [pkg_name]))
+            logger.warning(f"SDKMAN! uninstall failed or not found for {sdkman_candidate}, falling back to system package managers.")
 
-        for pkg in combined_packages:
-            if is_package_installed(pkg, pkg_manager):
-                if run_uninstall_cmd(pkg, pkg_manager):
-                    success.append(pkg)
-                else:
-                    failed.append(pkg)
-            else:
-                logger.info(f"{pkg} is not installed. Skipping.")
-    else:
-        related_packages = [pkg_name]
-        if is_package_installed(pkg_name, pkg_manager):
-            for pkg in related_packages:
-                if run_uninstall_cmd(pkg, pkg_manager):
-                    success.append(pkg)
-                else:
-                    failed.append(pkg)
-        elif is_snap_available():
-            # Try snap uninstall if not found in apt/dnf
-            if is_package_installed(pkg_name, "snap"):
-                if run_uninstall_cmd(pkg_name, "snap"):
-                    success.append(pkg_name)
-                else:
-                    failed.append(pkg_name)
-            else:
-                logger.info(f"{pkg_name} is not installed via snap. Skipping.")
-                failed.append(pkg_name)
+    # Generic uninstall for all other tools (including non-SDKMAN! Java)
+    if is_package_installed(pkg_name, pkg_manager):
+        if run_uninstall_cmd(pkg_name, pkg_manager):
+            success.append(pkg_name)
         else:
-            logger.info(f"{pkg_name} is not installed. Skipping.")
             failed.append(pkg_name)
+    else:
+        logger.info(f"{pkg_name} is not installed. Skipping.")
+        failed.append(pkg_name)
 
     if failed:
         return {
