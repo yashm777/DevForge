@@ -159,6 +159,30 @@ class MacToolManager:
             logger.warning(f"Could not list {kind} packages: {e}")
         return set()
     
+    @lru_cache(maxsize=128)
+    def _is_package_available(self, name: str, kind: str) -> bool:
+        """
+        Check if a package is available in Homebrew (not necessarily installed).
+        kind: "formula" or "cask"
+        """
+        try:
+            result = subprocess.run(
+                ["brew", "info", name], 
+                capture_output=True, text=True, timeout=10
+            )
+            if result.returncode == 0:
+                # Check if the output indicates this is the requested type
+                output = result.stdout.lower()
+                if kind == "formula":
+                    # Formulae typically show "bottle" or installation paths
+                    return "bottle" in output or "/usr/local" in output or "/opt/homebrew" in output
+                elif kind == "cask":
+                    # Casks typically show app installation paths
+                    return "applications" in output or ".app" in output
+        except Exception as e:
+            logger.debug(f"Could not check availability for {name}: {e}")
+        return False
+    
     def classify_package(self, name: str) -> str:
         """
         Classify a package as 'tool', 'app', or 'unknown'.
@@ -171,9 +195,16 @@ class MacToolManager:
         # Remove version suffix for classification
         base_name = name.split('@')[0]
         
+        # First check if it's already installed
         if base_name in self._brew_list("formula"):
             return "tool"
         elif base_name in self._brew_list("cask"):
+            return "app"
+        
+        # If not installed, check if it's available
+        if self._is_package_available(base_name, "formula"):
+            return "tool"
+        elif self._is_package_available(base_name, "cask"):
             return "app"
         else:
             return "unknown"
