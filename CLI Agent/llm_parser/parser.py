@@ -118,6 +118,7 @@ def build_prompt(user_input: str) -> str:
 - If version is not specified or is "latest", use the default package name.
 - If the package is not available via standard package managers and appears to be a known tool, provide a field called "manual_url" with the official website for manual installation.
 - Return only a single valid JSON object with keys "method" and "params".
+- For git/SSH key retrieval, interpret phrases like "get key", "get sshkey", "get public key", "show my ssh key", "show public key", "display ssh key", etc. as a request for the public SSH key. Use method 'tool_action_wrapper' with params: {"task": "git_setup", "action": "get_public_key"}.
 - Do NOT include any explanations, aliases, markdown, or code blocks in the response.
 """
 
