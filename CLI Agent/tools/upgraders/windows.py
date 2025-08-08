@@ -2,7 +2,7 @@ import os
 import re
 import shutil
 import subprocess
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List, Dict
 
 
 def _parse_version_tuple(v: str) -> Optional[Tuple[int, ...]]:
@@ -52,38 +52,103 @@ def _get_installed_version(tool: str) -> Optional[str]:
     return None
 
 
+def _search_winget_candidates(tool: str) -> List[Dict[str, str]]:
+    """Return a list of candidate packages from 'winget search <tool>'.
+
+    Each candidate is a dict with keys: name, id, source (when parsable).
+    Parsing is heuristic but robust for common table output.
+    """
+    candidates: List[Dict[str, str]] = []
+    try:
+        r = _run(["winget", "search", tool], timeout=30)
+        if r.returncode != 0:
+            return candidates
+        lines = (r.stdout or "").splitlines()
+        if len(lines) <= 2:
+            return candidates
+        for line in lines[2:]:  # skip header/separator
+            if not line.strip():
+                continue
+            parts = line.split()
+            if len(parts) < 3:
+                continue
+            # Find an ID-like token containing a dot.
+            pkg_id = None
+            for part in parts:
+                if "." in part and not part.endswith(".") and not part.startswith("."):
+                    pkg_id = part
+                    break
+            if not pkg_id:
+                continue
+            id_pos = line.find(pkg_id)
+            name = line[:id_pos].strip()
+            tail = line[id_pos + len(pkg_id):].strip()
+            tail_parts = tail.split()
+            source = tail_parts[-1] if tail_parts else ""
+            candidates.append({"name": name, "id": pkg_id, "source": source})
+    except Exception:
+        pass
+    return candidates
+
+
+def _best_candidate(tool: str, options: List[Dict[str, str]]) -> Optional[Dict[str, str]]:
+    t = tool.lower()
+    # 1) Exact name match
+    for opt in options:
+        if opt.get("name", "").lower() == t:
+            return opt
+    # 2) Id contains tool token
+    for opt in options:
+        if t in opt.get("id", "").lower():
+            return opt
+    # 3) Name contains tool token
+    for opt in options:
+        if t in opt.get("name", "").lower():
+            return opt
+    # 4) Special aliases
+    alias_map = {
+        "cpu-z": "CPUID.CPU-Z",
+        "cpuz": "CPUID.CPU-Z",
+    }
+    if t in alias_map:
+        for opt in options:
+            if opt.get("id") == alias_map[t]:
+                return opt
+    return options[0] if options else None
+
+
 def _find_winget_id(tool: str) -> Optional[str]:
-    """Try to determine a Winget package Id for the tool via 'winget list' then fallback to 'winget search'."""
+    """Determine a Winget package Id via 'winget list' or robust 'winget search'."""
+    # Quick alias map for popular tools with tricky names
+    alias_map = {
+        "cpu-z": "CPUID.CPU-Z",
+        "cpuz": "CPUID.CPU-Z",
+    }
+    if tool.lower() in alias_map:
+        return alias_map[tool.lower()]
+
     # Try list (if installed via winget)
     try:
         r = _run(["winget", "list", tool])
         if r.returncode == 0:
             for line in (r.stdout or "").splitlines():
-                # Look for a plausible Id token containing a dot and not ending with a dot
                 parts = line.split()
                 for part in parts:
                     if "." in part and not part.endswith(".") and not part.startswith(".") and len(part) > 2:
                         return part
     except Exception:
         pass
-    # Fallback: search
-    try:
-        r = _run(["winget", "search", tool])
-        if r.returncode == 0:
-            for line in (r.stdout or "").splitlines()[2:]:
-                parts = line.split()
-                for part in parts:
-                    if "." in part and not part.endswith(".") and not part.startswith(".") and len(part) > 2:
-                        return part
-    except Exception:
-        pass
-    return None
+
+    # Fallback: search and pick the best candidate
+    options = _search_winget_candidates(tool)
+    best = _best_candidate(tool, options)
+    return best.get("id") if best else None
 
 
 def _get_available_version_from_id(pkg_id: str) -> Optional[str]:
     """Query 'winget show --id <id>' and parse the version field as the latest available."""
     try:
-        r = _run(["winget", "show", "--id", pkg_id])
+        r = _run(["winget", "show", "--id", pkg_id, "--exact"], timeout=45)
         if r.returncode == 0:
             text = (r.stdout or "") + "\n" + (r.stderr or "")
             # Lines like: Version: 1.103.0
@@ -169,7 +234,18 @@ def handle_tool(tool, version: str = "latest"):
                     should_try_install = (cmp is None) or (cmp < 0)
 
                 if should_try_install:
+                    # First attempt: as given (name or id if we have it)
                     ok_i, out_i = _install_via_winget(tool, pkg_id, available_version)
+                    if not ok_i:
+                        # Second attempt: resolve a best candidate ID and retry with --id
+                        options = _search_winget_candidates(tool)
+                        best = _best_candidate(tool, options)
+                        if best:
+                            pkg_id2 = best.get("id")
+                            if pkg_id2 and pkg_id2 != pkg_id:
+                                ok_i, out_i = _install_via_winget(tool, pkg_id2, available_version)
+                                if ok_i:
+                                    pkg_id = pkg_id2
                     if ok_i:
                         new_version = _get_installed_version(tool) or available_version or installed_version
                         msg = f"Installed latest {tool} via winget (install fallback)"
@@ -182,7 +258,7 @@ def handle_tool(tool, version: str = "latest"):
                             "available_version": available_version,
                             "new_version": new_version,
                             "action": "installed",
-                            "winget_id": pkg_id
+                            "winget_id": pkg_id,
                         }
 
                 # Could not install or not needed
@@ -191,12 +267,23 @@ def handle_tool(tool, version: str = "latest"):
                     msg += f" Installed: {installed_version}."
                 if available_version:
                     msg += f" Available: {available_version}."
+                # If we failed to install and we do have candidates, surface them to help users refine
+                options = _search_winget_candidates(tool)
+                if options:
+                    return {
+                        "status": "success",
+                        "message": msg + " Candidates found; specify an exact Id to force install.",
+                        "installed_version": installed_version,
+                        "available_version": available_version,
+                        "action": "none",
+                        "candidates": options,
+                    }
                 return {
                     "status": "success",
                     "message": msg,
                     "installed_version": installed_version,
                     "available_version": available_version,
-                    "action": "none"
+                    "action": "none",
                 }
             return {"status": "error", "message": output or f"Failed to upgrade {tool} via winget."}
 
