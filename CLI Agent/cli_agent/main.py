@@ -29,23 +29,31 @@ def format_result(result: Dict[str, Any]) -> str:
     """Format the result object, but passthrough git_setup messages as-is."""
     if isinstance(result, dict):
         # Only passthrough for git-related actions
-        git_actions = {"generate_ssh_key", "add_ssh_key", "clone", "check_ssh_key_auth"}
+        git_actions = {"generate_ssh_key", "add_ssh_key", "clone", "check_ssh_key_auth", "show_ssh_key"}
         if result.get("action") in git_actions:
             # Prefer details.message if present
             if "details" in result and isinstance(result["details"], dict):
                 msg = result["details"].get("message")
                 if msg:
                     return msg
+                key = result["details"].get("key") or result["details"].get("output")
+                if key:
+                    return key
             # Fallback to result.message if present
             if "result" in result and isinstance(result["result"], dict):
                 msg = result["result"].get("message")
                 if msg:
                     return msg
+                key = result["result"].get("key") or result["result"].get("output")
+                if key:
+                    return key
             # Fallback to top-level message
             msg = result.get("message")
             if msg:
                 return msg
-            # If nothing found, show a generic message for git actions
+            key = result.get("key") or result.get("output")
+            if key:
+                return key
             return "No message returned from git operation."
         # --- Default formatting for all other tools ---
         status = result.get("status")
