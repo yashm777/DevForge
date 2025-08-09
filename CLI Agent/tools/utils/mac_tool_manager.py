@@ -6,7 +6,11 @@ It addresses all the key pain points identified in the original system:
 
 1. Accurate Python version detection (system vs virtual environment)
 2. Proper tool vs application classification
-3. Shell-aware configuration (bash/zsh)
+3. Shell-aware configuration (bas                ["brew", "list", "--versions", package_name],
+                capture_output=True,
+                text=True,
+                timeout=30
+            ))
 4. Smart upgrade/downgrade logic
 5. Version policy enforcement
 6. Security and cleanup features
@@ -92,7 +96,7 @@ class MacToolManager:
         """Get the system Python version, bypassing virtual environments."""
         exe = self.get_system_python_executable()
         try:
-            result = subprocess.run([exe, "--version"], capture_output=True, text=True, timeout=10)
+            result = subprocess.run([exe, "--version"], capture_output=True, text=True, timeout=30)
             if result.returncode == 0:
                 output = result.stdout.strip() or result.stderr.strip()
                 return self._extract_version_from_output(output)
@@ -168,7 +172,7 @@ class MacToolManager:
         try:
             result = subprocess.run(
                 ["brew", "info", name], 
-                capture_output=True, text=True, timeout=10
+                capture_output=True, text=True, timeout=30
             )
             if result.returncode == 0:
                 # Check if the output indicates this is the requested type
@@ -261,7 +265,7 @@ class MacToolManager:
         try:
             result = subprocess.run(
                 ["brew", "info", "--json=v2", formula], 
-                capture_output=True, text=True, timeout=10
+                capture_output=True, text=True, timeout=30
             )
             if result.returncode == 0:
                 data = json.loads(result.stdout)
@@ -281,13 +285,18 @@ class MacToolManager:
         Extract version number from command output.
         Returns a normalized version string.
         """
-        # Common version patterns
+        # Comprehensive version patterns
         patterns = [
-            r'version "([^"]+)"',           # Java: openjdk version "21.0.8"
-            r'v(\d+\.\d+(?:\.\d+)*)',      # Node: v20.1.0
-            r'(\d+\.\d+(?:\.\d+)*)',       # Generic: 3.12.0
-            r'version (\d+\.\d+(?:\.\d+)*)', # Docker: version 20.10.8
-            r'Python (\d+\.\d+(?:\.\d+)*)', # Python: Python 3.13.5
+            r'version "([^"]+)"',  # Java format
+            r'v(\d+\.\d+(?:\.\d+)*)',  # Node format  
+            r'(\d+\.\d+(?:\.\d+)*)',  # Generic
+            r'Kotlin version (\d+\.\d+(?:\.\d+)*)',  # Kotlin format
+            r'rustc (\d+\.\d+(?:\.\d+)*)',  # Rust format
+            r'Terraform v(\d+\.\d+(?:\.\d+)*)',  # Terraform format
+            r'version:\s*(\d+\.\d+(?:\.\d+)*)',  # YAML-style
+            r'(\d+\.\d+(?:\.\d+)*)-[a-zA-Z0-9]+',  # Version with suffix
+            r'Python (\d+\.\d+(?:\.\d+)*)',  # Python specific
+            r'Go version go(\d+\.\d+(?:\.\d+)*)',  # Go specific format
         ]
         
         for pattern in patterns:
@@ -392,6 +401,18 @@ class MacToolManager:
                 "rust": ["rustc", "--version"],
                 "ruby": ["ruby", "--version"],
                 "php": ["php", "--version"],
+                "cargo": ["cargo", "--version"],
+                "kotlin": ["kotlin", "-version"],
+                "maven": ["mvn", "--version"],
+                "gradle": ["gradle", "--version"],
+                "terraform": ["terraform", "--version"],
+                "ansible": ["ansible", "--version"],
+                "kubectl": ["kubectl", "version", "--client"],
+                "flutter": ["flutter", "--version"],
+                "dart": ["dart", "--version"],
+                "yarn": ["yarn", "--version"],
+                "pip": ["pip", "--version"],
+                "pip3": ["pip3", "--version"],
             }
             
             # Get commands to try
@@ -416,7 +437,7 @@ class MacToolManager:
                         cmd,
                         capture_output=True,
                         text=True,
-                        timeout=10
+                        timeout=30
                     )
                     
                     if result.returncode == 0:
@@ -442,46 +463,31 @@ class MacToolManager:
     
     def _check_python_version_smart(self, tool_name: str) -> Dict:
         """
-        Smart Python version checking that tries multiple installations
-        and returns the output from the highest version found.
+        Smart Python version checking that returns the FIRST working version in PATH order.
         """
+        # Clear any cached data that might be stale
+        if hasattr(self, '_brew_list'):
+            self._brew_list.cache_clear()
+        
         commands_to_try = self._get_python_version_commands(tool_name)
         
-        best_version = None
-        best_output = None
-        best_command = None
-        
+        # Return FIRST working version, not highest
         for cmd in commands_to_try:
             try:
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
                 if result.returncode == 0:
                     output = result.stdout.strip() or result.stderr.strip()
                     if output:
-                        version_tuple = self._extract_version_tuple(output)
-                        if version_tuple:
-                            # Compare with current best version
-                            if best_version is None or version_tuple > best_version:
-                                best_version = version_tuple
-                                best_output = output
-                                best_command = cmd
-                        elif best_output is None:
-                            # If we can't parse version, save as fallback
-                            best_output = output
-                            best_command = cmd
-            except FileNotFoundError:
+                        version = self._extract_version_from_output(output)
+                        return {
+                            "found": True,
+                            "version": version,
+                            "raw_output": output,
+                            "command_used": cmd,
+                            "is_system_python": cmd and cmd[0] in self.SYSTEM_PYTHON_PATHS
+                        }
+            except:
                 continue
-            except Exception:
-                continue
-        
-        if best_output:
-            version = self._extract_version_from_output(best_output)
-            return {
-                "found": True,
-                "version": version,
-                "raw_output": best_output,
-                "command_used": best_command,
-                "is_system_python": best_command and best_command[0] in self.SYSTEM_PYTHON_PATHS
-            }
         
         return {"found": False}
     
