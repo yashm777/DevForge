@@ -52,10 +52,11 @@ class MacToolManager:
     }
     
     # System Python paths (bypass virtual environments)
+    # Prioritize Homebrew Python over macOS system Python
     SYSTEM_PYTHON_PATHS = [
-        '/usr/bin/python3',
-        '/usr/local/bin/python3', 
-        '/opt/homebrew/bin/python3',
+        '/opt/homebrew/bin/python3',     # Homebrew Python (preferred)
+        '/usr/local/bin/python3',        # Legacy Homebrew location
+        '/usr/bin/python3',              # macOS system Python (fallback)
         '/System/Library/Frameworks/Python.framework/Versions/Current/bin/python3',
     ]
     
