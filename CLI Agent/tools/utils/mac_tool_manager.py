@@ -658,13 +658,9 @@ class MacToolManager:
         # Update tool_name to use resolved name
         tool_name = resolved_name
         
-        # Validate version requirements
-        if package_type == "tool" and version == "latest" and self.is_upgradable(tool_name):
-            return {
-                "status": "error",
-                "message": f"Tools require an explicit version. Please specify: {tool_name}@<version>"
-            }
-        elif package_type == "app" and version != "latest":
+        # Validate version requirements - Simplified version policy
+        # Only restrict apps, allow tools to use latest or specific versions
+        if package_type == "app" and version != "latest":
             return {
                 "status": "error", 
                 "message": f"Applications only support 'latest' version. To change versions, uninstall and reinstall {tool_name}"
