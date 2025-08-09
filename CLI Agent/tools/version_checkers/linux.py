@@ -105,6 +105,82 @@ def _go_version() -> Optional[str]:
 def _dotnet_version() -> Optional[str]:
     return _exec_version(["dotnet", "--version"])
 
+def _java_default_alternative_path() -> Optional[str]:
+    # Resolve the real target behind /etc/alternatives/java if present
+    alt = "/etc/alternatives/java"
+    if os.path.exists(alt):
+        r = _run(["readlink", "-f", alt])
+        if r.returncode == 0:
+            return (r.stdout or "").strip()
+    # Fallback to which java
+    p = shutil.which("java")
+    if p:
+        r = _run(["readlink", "-f", p])
+        if r.returncode == 0 and (r.stdout or "").strip():
+            return (r.stdout or "").strip()
+        return p
+    return None
+
+def _infer_java_version_from_path(p: str) -> Optional[str]:
+    # Try to infer from common path segments
+    # e.g., /usr/lib/jvm/java-17-openjdk-amd64/bin/java -> 17
+    m = re.search(r"/java-(\d{1,3})[-/]", p)
+    if m:
+        return m.group(1)
+    # e.g., /usr/lib/jvm/java-21-openjdk... or .../jdk-17.0.9/...
+    m = re.search(r"/jdk-?([0-9][0-9._-]*)/", p)
+    if m:
+        return m.group(1)
+    return None
+
+def _java_alternatives_info() -> dict:
+    info = {"current_path": _java_default_alternative_path(), "alternatives": []}
+    r = _run(["update-alternatives", "--list", "java"])
+    if r.returncode == 0:
+        lines = [(r.stdout or "").strip().splitlines()]
+        for path in (lines[0] if lines and lines[0] else []):
+            path = path.strip()
+            if not path:
+                continue
+            info["alternatives"].append({
+                "path": path,
+                "inferred_version": _infer_java_version_from_path(path)
+            })
+    return info
+
+def _dpkg_java_packages() -> list[dict]:
+    if not shutil.which("dpkg"):
+        return []
+    r = _run(["dpkg", "-l"])
+    pkgs = []
+    if r.returncode == 0:
+        for line in (r.stdout or "").splitlines():
+            if not line.startswith("ii"):
+                continue
+            parts = line.split()
+            if len(parts) < 3:
+                continue
+            name, ver = parts[1], parts[2]
+            if name.startswith("openjdk-") or name in ("default-jdk", "default-jre"):
+                pkgs.append({"name": name, "version": ver})
+    return pkgs
+
+def _sdkman_java_installed() -> dict:
+    out = {"installed": [], "current": None}
+    home = os.path.expanduser(f"~{os.environ.get('SUDO_USER')}") if os.environ.get("SUDO_USER") else os.path.expanduser("~")
+    init_path = os.path.join(home, ".sdkman", "bin", "sdkman-init.sh")
+    if not os.path.isfile(init_path):
+        return out
+    # List installed SDKMAN java candidates (directories under candidates/java)
+    r = _run(['bash', '-lc', f'source "{init_path}"; ls "$SDKMAN_DIR/candidates/java" 2>/dev/null || true'])
+    if r.returncode == 0:
+        for line in (r.stdout or "").splitlines():
+            v = line.strip()
+            if v and v != "current":
+                out["installed"].append(v)
+    out["current"] = _sdkman_current("java")
+    return out
+
 # ---------- package manager fallbacks (Debian/Ubuntu focus) ----------
 
 def _dpkg_version(pkg: str) -> Optional[str]:
@@ -245,10 +321,25 @@ def check_version(tool_name: str, version: str = "latest") -> dict:
             }
             if tool_key == "java":
                 details = {}
+                # Current and all alternatives with inferred versions
                 try:
-                    alt = _run(["update-alternatives", "--list", "java"])
-                    if alt.returncode == 0:
-                        details["installed_alternatives"] = (alt.stdout or "").strip().splitlines()
+                    alt_info = _java_alternatives_info()
+                    if alt_info.get("current_path") or alt_info.get("alternatives"):
+                        details["alternatives"] = alt_info
+                except Exception:
+                    pass
+                # Installed apt OpenJDK packages with versions
+                try:
+                    dpkg_java = _dpkg_java_packages()
+                    if dpkg_java:
+                        details["apt_packages"] = dpkg_java
+                except Exception:
+                    pass
+                # SDKMAN installed and current
+                try:
+                    sdk_java = _sdkman_java_installed()
+                    if sdk_java.get("installed") or sdk_java.get("current"):
+                        details["sdkman"] = sdk_java
                 except Exception:
                     pass
                 if details:
