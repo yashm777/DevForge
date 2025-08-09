@@ -16,7 +16,7 @@ class HTTPMCPClient:
             "params": params
         }
         try:
-            response = requests.post(self.mcp_url, json=payload, timeout=100)
+            response = requests.post(self.mcp_url, json=payload, timeout=300)
             if response.status_code == 200:
                 return response.json()
             else:
