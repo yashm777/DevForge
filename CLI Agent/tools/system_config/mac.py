@@ -272,8 +272,6 @@ def get_java_info():
                     # For Homebrew Java, derive JAVA_HOME from the java binary path
                     if "/opt/homebrew/" in java_path:
                         # Extract JAVA_HOME from Homebrew path
-                        # /opt/homebrew/Cellar/openjdk@21/21.0.8/libexec/openjdk.jdk/Contents/Home/bin/java
-                        # -> /opt/homebrew/Cellar/openjdk@21/21.0.8/libexec/openjdk.jdk/Contents/Home
                         java_home = java_path.replace("/bin/java", "")
                     else:
                         java_home = "Unknown (non-standard installation)"
@@ -430,54 +428,3 @@ def switch_java_version(version):
             "status": "error", 
             "message": f"Failed to switch Java version: {str(e)}"
         }
-
-if __name__ == "__main__":
-    """Test the Mac system configuration functions."""
-    print("=== Mac System Configuration Test ===")
-    
-    # Test 1: Check environment variable
-    print("\n1. Testing environment variable check:")
-    result = check_env_variable('HOME')
-    print(f"HOME variable: {result}")
-    
-    # Test 2: Shell detection
-    print("\n2. Testing shell detection:")
-    shell = detect_user_shell()
-    print(f"Detected shell: {shell}")
-    
-    # Test 3: Profile path
-    print("\n3. Testing profile path:")
-    profile = get_shell_profile_path(shell)
-    print(f"Profile path: {profile}")
-    print(f"Profile exists: {os.path.exists(profile)}")
-    
-    # Test 4: Port check
-    print("\n4. Testing port check:")
-    port_result = is_port_open(8080)
-    print(f"Port 8080 status: {port_result}")
-    
-    # Test 5: System info
-    print("\n5. Testing system info:")
-    sys_info = get_system_info()
-    print(f"System info status: {sys_info.get('status')}")
-    if sys_info.get('status') == 'success':
-        info = sys_info.get('system_info', {})
-        print(f"  OS Version: {info.get('os_version', 'Unknown')}")
-        print(f"  Computer Name: {info.get('computer_name', 'Unknown')}")
-    
-    # Test 6: Homebrew check
-    print("\n6. Testing Homebrew check:")
-    brew_result = check_homebrew()
-    print(f"Homebrew status: {brew_result}")
-    
-    # Test 7: Java info
-    print("\n7. Testing Java info:")
-    java_result = get_java_info()
-    print(f"Java status: {java_result}")
-    
-    # Test 8: Xcode tools
-    print("\n8. Testing Xcode tools:")
-    xcode_result = check_xcode_tools()
-    print(f"Xcode tools: {xcode_result}")
-    
-    print("\n=== Test Complete ===")
