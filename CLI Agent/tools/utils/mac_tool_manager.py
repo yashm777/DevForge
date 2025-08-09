@@ -727,6 +727,8 @@ class MacToolManager:
                 }
                 
         except Exception as e:
+            # Clear cache on installation failure to prevent stale data
+            self._brew_list.cache_clear()
             return {
                 "status": "error",
                 "message": f"Installation failed: {str(e)}"
@@ -807,6 +809,8 @@ class MacToolManager:
                     }
                     
         except Exception as e:
+            # Clear cache on upgrade failure to prevent stale data
+            self._brew_list.cache_clear()
             return {
                 "status": "error",
                 "message": f"Upgrade failed: {str(e)}"
@@ -862,6 +866,8 @@ class MacToolManager:
                 }
                 
         except Exception as e:
+            # Clear cache on uninstall failure to prevent stale data
+            self._brew_list.cache_clear()
             return {
                 "status": "error",
                 "message": f"Uninstall failed: {str(e)}"
