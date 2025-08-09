@@ -25,17 +25,97 @@ def resolve_tool_name(raw_name: str, os_type: str, version: str = "latest", cont
         "vscode"
     }
 
+    sdk_candidates_map = {
+        # SDKMAN candidates
+        "java": "java",
+        "maven": "maven",
+        "gradle": "gradle",
+        "kotlin": "kotlin",
+        "scala": "scala",
+        "groovy": "groovy",
+        "sbt": "sbt",
+        "ant": "ant",
+        "micronaut": "micronaut",
+        "springboot": "springboot",
+        "visualvm": "visualvm",
+    }
+
+    apt_name_map = {
+        # Common dev tools via apt
+        "git": "git",
+        "curl": "curl",
+        "zip": "zip",
+        "unzip": "unzip",
+        "build-essential": "build-essential",
+        "gcc": "gcc",
+        "g++": "g++",
+        "make": "make",
+        "cmake": "cmake",
+        "python": "python3",
+        "python3": "python3",
+        "pip": "python3-pip",
+        "python3-pip": "python3-pip",
+        "node": "nodejs",
+        "nodejs": "nodejs",
+        "npm": "npm",
+        "yarn": "yarnpkg",
+        "docker": "docker.io",
+        "docker.io": "docker.io",
+        "neovim": "neovim",
+        "nvim": "neovim",
+    }
+
+    snap_name_map = {
+        # IDEs and popular snaps
+        "vscode": "code",
+        "code": "code",
+        "intellij": "intellij-idea-community",
+        "intellij-idea-community": "intellij-idea-community",
+        "pycharm": "pycharm-community",
+        "pycharm-community": "pycharm-community",
+        "pycharm-professional": "pycharm-professional",
+        "android-studio": "android-studio",
+        "goland": "goland",
+        "clion": "clion",
+        "postman": "postman",
+        "dbeaver": "dbeaver-ce",
+        "dbeaver-ce": "dbeaver-ce",
+    }
+
     if os_type == "linux":
         if normalized == "java":
             if context == "version_check":
-                # For version checking, return the executable name
-                return {"name": "java", "fallback": None, "classic_snap": False}
-            else:
-                # For install/uninstall context
-                if version.strip() != "latest":
-                    package = f"openjdk-{version}-jdk"
-                    return {"name": package, "fallback": None, "classic_snap": False}
-                return {"name": "default-jdk", "fallback": None, "classic_snap": False}
+                return {
+                    "name": "java",
+                    "fallback": None,
+                    "classic_snap": False,
+                    "manager": "sdkman",
+                    "sdk_candidate": "java",
+                    "apt_name": "default-jdk",
+                    "snap_name": "java",
+                }
+            # Install context
+            if version.strip() != "latest":
+                apt_pkg = f"openjdk-{version}-jdk"  # e.g., openjdk-17-jdk
+                return {
+                    "name": apt_pkg,
+                    "fallback": None,
+                    "classic_snap": False,
+                    "manager": "apt",            # prefer apt for explicit versioned JDK
+                    "sdk_candidate": "java",      # keep for fallback path
+                    "apt_name": apt_pkg,
+                    "snap_name": "java",
+                }
+            # latest: prefer SDKMAN, with apt fallback preset
+            return {
+                "name": "java",
+                "fallback": None,
+                "classic_snap": False,
+                "manager": "sdkman",
+                "sdk_candidate": "java",
+                "apt_name": "default-jdk",
+                "snap_name": "java",
+            }
 
         elif normalized == "python":
             if context == "version_check":
@@ -57,19 +137,27 @@ def resolve_tool_name(raw_name: str, os_type: str, version: str = "latest", cont
             "eclipse": "eclipse"
         }
 
+        # Final resolution for Linux using maps above
         resolved_name = name_map.get(normalized, raw_name)
 
-        if context == "version_check":
-            # Return executable name for version check where applicable
-            # For example, 'code' is executable for vscode snap
-            if normalized == "vscode":
-                return {"name": "code", "fallback": None, "classic_snap": False}
-            return {"name": resolved_name, "fallback": None, "classic_snap": resolved_name in classic_snap_packages}
+        # Decide preferred manager
+        manager = None
+        sdk_candidate = sdk_candidates_map.get(normalized)
+        if sdk_candidate:
+            manager = "sdkman"
+        elif normalized in snap_name_map or resolved_name in classic_snap_packages:
+            manager = "snap"
+        else:
+            manager = "apt"
 
         return {
             "name": resolved_name,
             "fallback": None,
-            "classic_snap": resolved_name in classic_snap_packages
+            "classic_snap": resolved_name in classic_snap_packages,
+            "manager": manager,
+            "sdk_candidate": sdk_candidate,
+            "apt_name": apt_name_map.get(normalized, apt_name_map.get(resolved_name, resolved_name)),
+            "snap_name": snap_name_map.get(normalized, snap_name_map.get(resolved_name, resolved_name)),
         }
 
     elif os_type == "darwin":
