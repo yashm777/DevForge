@@ -313,7 +313,7 @@ def check_version(tool_name: str, version: str = "latest") -> dict:
         if detected_version:
             result = {
                 "status": "success",
-                "message": f"Version detected for {tool_name}",
+                "message": f"Version detected for {tool_name}: {detected_version}", 
                 "tool": tool_key,
                 "version": detected_version,
                 "source": "executable",
@@ -351,7 +351,7 @@ def check_version(tool_name: str, version: str = "latest") -> dict:
     if ver:
         return {
             "status": "success",
-            "message": f"Version detected for {tool_name} via dpkg",
+            "message": f"Version detected for {tool_name}: {detected_version}",
             "tool": normalized,
             "version": ver,
             "source": "dpkg",
@@ -363,7 +363,7 @@ def check_version(tool_name: str, version: str = "latest") -> dict:
     if ver:
         return {
             "status": "success",
-            "message": f"Version detected for {tool_name} via snap",
+           "message": f"Version detected for {tool_name}: {detected_version}",
             "tool": normalized,
             "version": ver,
             "source": "snap",
@@ -376,7 +376,7 @@ def check_version(tool_name: str, version: str = "latest") -> dict:
         if ver:
             return {
                 "status": "success",
-                "message": f"Version detected for {tool_name} via SDKMAN",
+                "message": f"Version detected for {tool_name}: {detected_version} via SDKMAN",
                 "tool": normalized,
                 "version": ver,
                 "source": "sdkman",
