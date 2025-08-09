@@ -37,6 +37,61 @@ def format_installer_output(raw: str) -> str:
 import subprocess
 import re
 
+
+# Helper to resolve display name for either an ID or a plain name
+def _display_name_for_tool_input(tool: str) -> str:
+    # Winget IDs typically contain a dot, MS Store IDs are long alphanumerics starting with 9
+    if "." in tool or re.fullmatch(r"^[A-Z0-9]{10,}$", tool) or tool.upper().startswith("9"):
+        try:
+            return _winget_name_from_id(tool)
+        except Exception:
+            return tool
+    return tool
+
+def _winget_name_from_id(package_id: str) -> str:
+    """Resolve a human-friendly package name for a given Winget package ID.
+    Tries 'winget show --id', then a msstore-specific show, then a search fallback.
+    Falls back to the package_id if name cannot be determined.
+    """
+    def _parse_name_from_show(text: str) -> str | None:
+        for line in (text or "").splitlines():
+            if ":" in line:
+                k, _, v = line.partition(":")
+                if k.strip().lower() == "name":
+                    v = v.strip()
+                    if v:
+                        return v
+        return None
+
+    try:
+        # First attempt: generic show
+        r = subprocess.run(["winget", "show", "--id", package_id, "--exact"], capture_output=True, text=True, timeout=45)
+        text = (r.stdout or "") + "\n" + (r.stderr or "")
+        name = _parse_name_from_show(text)
+        if name:
+            return name
+        # Second attempt: msstore source (for IDs like 9WZDNCRDK3WP)
+        if re.fullmatch(r"^[A-Z0-9]{10,}$", package_id) or package_id.upper().startswith("9"):
+            r2 = subprocess.run(["winget", "show", "--id", package_id, "--exact", "--source", "msstore"], capture_output=True, text=True, timeout=45)
+            text2 = (r2.stdout or "") + "\n" + (r2.stderr or "")
+            name = _parse_name_from_show(text2)
+            if name:
+                return name
+        # Fallback: search and take the portion before the ID on the matching line
+        rs = subprocess.run(["winget", "search", package_id], capture_output=True, text=True, timeout=30)
+        if rs.returncode == 0:
+            for line in (rs.stdout or "").splitlines():
+                if package_id in line:
+                    # Name is everything before the ID token
+                    idx = line.find(package_id)
+                    if idx > 0:
+                        possible_name = line[:idx].strip()
+                        if possible_name:
+                            return possible_name
+    except Exception:
+        pass
+    return package_id
+
 def install_windows_tool(tool, version="latest"):
     # First, try to search for the tool to see if there are multiple matches
     search_cmd = ["winget", "search", tool]
@@ -128,7 +183,8 @@ def install_windows_tool(tool, version="latest"):
         result = subprocess.run(cmd, capture_output=True, text=True)
         output = result.stdout + "\n" + result.stderr
         if result.returncode == 0:
-            return {"status": "success", "message": f"Installed {tool}"}
+            display_name = _display_name_for_tool_input(tool)
+            return {"status": "success", "message": f"Installed {display_name}"}
         else:
             # Check if error is due to multiple packages found
             if "Multiple packages found matching input criteria" in output:
@@ -186,7 +242,8 @@ def install_windows_tool_by_id(package_id, version="latest"):
         result = subprocess.run(cmd, capture_output=True, text=True)
         output = result.stdout + "\n" + result.stderr
         if result.returncode == 0:
-            return {"status": "success", "message": f"Installed {package_id}"}
+            display_name = _winget_name_from_id(package_id)
+            return {"status": "success", "message": f"Installed {display_name}"}
         else:
             # Check if error is due to multiple packages found
             if "Multiple packages found matching input criteria" in output:
@@ -200,7 +257,8 @@ def install_windows_tool_by_id(package_id, version="latest"):
                 exact_output = exact_result.stdout + "\n" + exact_result.stderr
                 
                 if exact_result.returncode == 0:
-                    return {"status": "success", "message": exact_result.stdout.strip() or f"Installed {package_id}"}
+                    display_name = _winget_name_from_id(package_id)
+                    return {"status": "success", "message": f"Installed {display_name}"}
                 
                 # If exact match fails, search for options
                 search_result = subprocess.run(["winget", "search", package_id], capture_output=True, text=True)
