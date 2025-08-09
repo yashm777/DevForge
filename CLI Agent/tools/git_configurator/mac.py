@@ -135,9 +135,13 @@ def check_ssh_key_auth() -> dict:
     if not os.path.exists(key_path) or not os.path.exists(pub_key_path):
         return {"status": "error", "message": "SSH key not found. Please generate your SSH key first."}
     try:
+        # Add timeout to prevent hanging
         result = subprocess.run(
             ["ssh", "-T", "git@github.com"],
-            capture_output=True, text=True, check=False 
+            capture_output=True, 
+            text=True, 
+            check=False,
+            timeout=30  # Add this timeout
         )
         output = (result.stdout + result.stderr).lower()
         # GitHub SSH test returns exit code 1 even on successful auth, so check the message content
@@ -149,8 +153,53 @@ def check_ssh_key_auth() -> dict:
             # Show the actual output for debugging, but mark as warning since it's unclear
             actual_output = result.stdout.strip() or result.stderr.strip()
             return {"status": "warning", "message": f"Unclear SSH authentication result: {actual_output}"}
+            
+    except subprocess.TimeoutExpired:  # Add timeout handling
+        return {"status": "error", "message": "SSH authentication check timed out (30s)"}
     except Exception as e:
         return {"status": "error", "message": f"Failed to test SSH authentication: {str(e)}"}
+
+
+def get_public_ssh_key(key_path: str = "~/.ssh/id_rsa") -> dict:
+    """
+    Retrieve and display the SSH public key content.
+    
+    Args:
+        key_path: Path to the private SSH key (public key will be key_path + ".pub")
+    
+    Returns:
+        dict: Status and public key content or error message
+    """
+    pub_key_path = os.path.expanduser(key_path) + ".pub"
+    
+    if not os.path.exists(pub_key_path):
+        return {
+            "status": "error", 
+            "message": "SSH public key not found. Please generate your SSH key first."
+        }
+    
+    try:
+        with open(pub_key_path, "r") as f:
+            public_key = f.read().strip()
+        
+        if not public_key:
+            return {
+                "status": "error",
+                "message": "SSH public key file is empty."
+            }
+        
+        return {
+            "status": "success",
+            "message": f"Your SSH public key:\n\n{public_key}\n\nCopy this key and add it to your Git service (GitHub, GitLab, etc.)",
+            "public_key": public_key,
+            "key_path": pub_key_path
+        }
+        
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to read SSH public key: {str(e)}"
+        }
 
 
 def add_ssh_key_to_github(pubkey: str, pat: str) -> str:
@@ -240,6 +289,36 @@ def clone_repository_ssh(repo_url: str, dest_dir: str = None, branch: str = None
 
     # Check SSH authentication
     auth_result = check_ssh_key_auth()
+    
+    # AUTO-FIX: Handle "Host key verification failed" error
+    if auth_result["status"] != "success" and "Host key verification failed" in auth_result.get("message", ""):
+        logging.info("Host key verification failed. Adding GitHub to known_hosts automatically...")
+        
+        try:
+            # Automatically add GitHub's host key
+            result = subprocess.run(
+                ["ssh-keyscan", "-H", "github.com"],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            
+            if result.returncode == 0:
+                known_hosts_path = os.path.expanduser("~/.ssh/known_hosts")
+                # Ensure .ssh directory exists
+                os.makedirs(os.path.dirname(known_hosts_path), exist_ok=True)
+                
+                with open(known_hosts_path, "a") as f:
+                    f.write(result.stdout)
+                
+                logging.info("Added GitHub to known_hosts automatically")
+                
+                # Retry SSH authentication after adding host key
+                auth_result = check_ssh_key_auth()
+            
+        except Exception as e:
+            logging.warning(f"Could not automatically add host key: {e}")
+    
     if auth_result["status"] != "success":
         logging.error(f"SSH authentication failed: {auth_result['message']}")
         manual_msg = (
@@ -260,9 +339,20 @@ def clone_repository_ssh(repo_url: str, dest_dir: str = None, branch: str = None
         cmd.append(dest_dir)
     try:
         logging.info(f"Cloning repository {repo_url} ...")
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        subprocess.run(
+            cmd, 
+            check=True, 
+            capture_output=True, 
+            text=True,
+            timeout=300  # Add 5-minute timeout for cloning
+        )
         logging.info(f"Repository cloned to {dest_dir or 'current directory'}.")
         return f"Repository cloned to {dest_dir or 'current directory'}"
+    except subprocess.TimeoutExpired:
+        return {
+            "status": "error", 
+            "message": f"Git clone timed out after 5 minutes. Repository might be too large."
+        }
     except subprocess.CalledProcessError as e:
         error_msg = e.stderr or e.stdout or str(e)
         logging.error("GIT CLONE ERROR: %s", error_msg)
@@ -283,9 +373,16 @@ def clone_repository(repo_url: str, dest_dir: str = None, branch: str = None, ve
     if verbose:
         logging.info(f"Cloning repository from {repo_url}...")
     try:
-        subprocess.run(cmd, check=True)
+        subprocess.run(
+            cmd, 
+            check=True,
+            timeout=300  # Add 5-minute timeout for cloning
+        )
         if verbose:
             logging.info("Clone successful.")
+    except subprocess.TimeoutExpired:
+        logging.error("Git clone timed out after 5 minutes")
+        raise RuntimeError("Git clone timed out after 5 minutes. Repository might be too large.")
     except subprocess.CalledProcessError as e:
         logging.error(f"Error cloning repository: {e}")
         raise
@@ -319,7 +416,7 @@ def perform_git_setup(
 ):
     """
     Entry point to perform git-related tasks. Handles pre-checks and executes action.
-    Actions supported: 'clone', 'generate_ssh_key', 'add_ssh_key', 'check_ssh_key_auth'
+    Actions supported: 'clone', 'generate_ssh_key', 'add_ssh_key', 'check_ssh_key_auth', 'get_public_key', 'switch_branch'
     """
     if not is_git_installed():
         return {"status": "error", "message": "Git is not installed on this macOS system."}
@@ -361,6 +458,10 @@ def perform_git_setup(
             result = check_ssh_key_auth()
             return {"status": result.get("status", "error"), "action": action, "details": result}
 
+        elif action == "get_public_key":
+            result = get_public_ssh_key()
+            return {"status": result.get("status", "error"), "action": action, "details": result}
+
         elif action == "switch_branch":
             if not dest_dir or not branch:
                 return {"status": "error", "message": "Both repo path and branch name are required."}
@@ -373,7 +474,7 @@ def perform_git_setup(
             return {"status": "success", "action": action, "details": {"message": f"Switched to branch {branch}", "branch": branch}}
 
         else:
-            valid_actions = ['clone', 'generate_ssh_key', 'add_ssh_key', 'check_ssh_key_auth', 'switch_branch']
+            valid_actions = ['clone', 'generate_ssh_key', 'add_ssh_key', 'check_ssh_key_auth', 'get_public_key', 'switch_branch']
             return {"status": "error", "message": f"Unsupported action: {action}. Valid actions are: {', '.join(valid_actions)}"}
     except Exception as e:
         logging.error("Git setup error: %s", str(e))
