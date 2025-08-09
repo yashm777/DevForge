@@ -241,7 +241,6 @@ def handle_git_setup(action, repo_url="", branch="", username="", email="", dest
             )
         except Exception as e:
             return {"status": "error", "message": str(e)}
-
     elif os_type == "darwin":  # macOS
         try:
             from tools.git_configurator.mac import perform_git_setup
