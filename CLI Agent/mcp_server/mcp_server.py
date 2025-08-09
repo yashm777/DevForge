@@ -344,11 +344,7 @@ async def mcp_endpoint(request: Request):
 
         add_log_entry("INFO", f"MCP response for {method}: {result.get('status', 'success')}")
         return JSONResponse(
-            content={
-                "jsonrpc": "2.0",
-                "id": id_,
-                "result": result
-            },
+            content=result,
             media_type="application/json"
         )
     except Exception as e:
