@@ -38,7 +38,11 @@ class HTTPMCPClient:
     
     def get_server_logs(self, lines: int = 50):
         """Get server logs from the MCP server"""
-        return self._make_request("get_logs", {"lines": lines})
+        raw = self._make_request("get_logs", {"lines": lines})
+        # Normalize: server currently returns {'logs': [...]} directly. Wrap into {'result': {'logs': [...]}}
+        if isinstance(raw, dict) and "logs" in raw and "result" not in raw:
+            return {"result": {"logs": raw.get("logs", [])}}
+        return raw
     
     def generate_code(self, description: str):
         result = self._make_request("generate_code", {"description": description})
@@ -100,3 +104,4 @@ class HTTPMCPClient:
         if pat:
             params["pat"] = pat
         return self._make_request("tool_action_wrapper", params)
+
