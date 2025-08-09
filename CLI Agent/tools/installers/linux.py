@@ -201,8 +201,10 @@ def install_linux_tool(tool: str, version: str = "latest") -> dict:
     Returns: {"status": "success|error|ambiguous", "message": str, ...}
     """
     os_type = get_os_type().lower()
-    if os_type not in ("ubuntu", "debian"):
-        return {"status": "error", "message": f"Unsupported Linux distro '{os_type}'. Only Ubuntu/Debian supported."}
+    pm = get_available_package_manager()
+    # Accept generic "linux" as long as it's apt-based
+    if pm != "apt":
+        return {"status": "error", "message": f"Unsupported Linux environment '{os_type}'. Only apt-based (Debian/Ubuntu) distros are supported."}
 
     if not is_sudo_available():
         return {"status": "error", "message": "sudo is not available. Please install sudo or run as root."}
