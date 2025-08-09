@@ -160,6 +160,48 @@ def check_ssh_key_auth() -> dict:
         return {"status": "error", "message": f"Failed to test SSH authentication: {str(e)}"}
 
 
+def get_public_ssh_key(key_path: str = "~/.ssh/id_rsa") -> dict:
+    """
+    Retrieve and display the SSH public key content.
+    
+    Args:
+        key_path: Path to the private SSH key (public key will be key_path + ".pub")
+    
+    Returns:
+        dict: Status and public key content or error message
+    """
+    pub_key_path = os.path.expanduser(key_path) + ".pub"
+    
+    if not os.path.exists(pub_key_path):
+        return {
+            "status": "error", 
+            "message": "SSH public key not found. Please generate your SSH key first."
+        }
+    
+    try:
+        with open(pub_key_path, "r") as f:
+            public_key = f.read().strip()
+        
+        if not public_key:
+            return {
+                "status": "error",
+                "message": "SSH public key file is empty."
+            }
+        
+        return {
+            "status": "success",
+            "message": f"Your SSH public key:\n\n{public_key}\n\nCopy this key and add it to your Git service (GitHub, GitLab, etc.)",
+            "public_key": public_key,
+            "key_path": pub_key_path
+        }
+        
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to read SSH public key: {str(e)}"
+        }
+
+
 def add_ssh_key_to_github(pubkey: str, pat: str) -> str:
     """
     Add SSH public key to GitHub using the API and a Personal Access Token (PAT).
@@ -269,7 +311,7 @@ def clone_repository_ssh(repo_url: str, dest_dir: str = None, branch: str = None
                 with open(known_hosts_path, "a") as f:
                     f.write(result.stdout)
                 
-                logging.info("✅ Added GitHub to known_hosts automatically")
+                logging.info("Added GitHub to known_hosts automatically")
                 
                 # Retry SSH authentication after adding host key
                 auth_result = check_ssh_key_auth()
@@ -374,7 +416,7 @@ def perform_git_setup(
 ):
     """
     Entry point to perform git-related tasks. Handles pre-checks and executes action.
-    Actions supported: 'clone', 'generate_ssh_key', 'add_ssh_key', 'check_ssh_key_auth'
+    Actions supported: 'clone', 'generate_ssh_key', 'add_ssh_key', 'check_ssh_key_auth', 'get_public_key', 'switch_branch'
     """
     if not is_git_installed():
         return {"status": "error", "message": "Git is not installed on this macOS system."}
@@ -416,6 +458,10 @@ def perform_git_setup(
             result = check_ssh_key_auth()
             return {"status": result.get("status", "error"), "action": action, "details": result}
 
+        elif action == "get_public_key":
+            result = get_public_ssh_key()
+            return {"status": result.get("status", "error"), "action": action, "details": result}
+
         elif action == "switch_branch":
             if not dest_dir or not branch:
                 return {"status": "error", "message": "Both repo path and branch name are required."}
@@ -428,7 +474,7 @@ def perform_git_setup(
             return {"status": "success", "action": action, "details": {"message": f"Switched to branch {branch}", "branch": branch}}
 
         else:
-            valid_actions = ['clone', 'generate_ssh_key', 'add_ssh_key', 'check_ssh_key_auth', 'switch_branch']
+            valid_actions = ['clone', 'generate_ssh_key', 'add_ssh_key', 'check_ssh_key_auth', 'get_public_key', 'switch_branch']
             return {"status": "error", "message": f"Unsupported action: {action}. Valid actions are: {', '.join(valid_actions)}"}
     except Exception as e:
         logging.error("Git setup error: %s", str(e))
