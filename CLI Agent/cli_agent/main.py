@@ -55,8 +55,14 @@ def format_result(result: Dict[str, Any]) -> str:
         if "variable" in result and "value" in result:
             variable = result.get("variable")
             value = result.get("value")
+            source = result.get("source", "")
+            note = result.get("note", "")
+            
             if status == "success":
-                return f"✓ {variable} = {value}"
+                if source == "shell_profile":
+                    return f"✓ {variable} = {value} (in shell profile, restart terminal to activate)"
+                else:
+                    return f"✓ {variable} = {value}"
             elif status == "error":
                 return f"✗ {message}" if message else "✗ Environment variable not found"
         

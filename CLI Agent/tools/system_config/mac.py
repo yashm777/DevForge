@@ -5,12 +5,33 @@ import plistlib
 import json
 
 def check_env_variable(var_name):
-    """Check if an environment variable is set on Mac."""
+    """Enhanced check that looks in both current process and shell profile."""
+    # First check current process
     value = os.environ.get(var_name)
     if value:
         return {"status": "success", "variable": var_name, "value": value}
-    else:
-        return {"status": "error", "message": f"{var_name} is not set."}
+    
+    # If not found, check shell profile
+    shell = detect_user_shell()
+    profile_path = get_shell_profile_path(shell)
+    
+    if os.path.exists(profile_path):
+        with open(profile_path, 'r') as f:
+            content = f.read()
+            # Look for export lines
+            import re
+            pattern = f'export\\s+{var_name}=["\'](.*?)["\']'
+            match = re.search(pattern, content)
+            if match:
+                return {
+                    "status": "success", 
+                    "variable": var_name, 
+                    "value": match.group(1),
+                    "source": "shell_profile",
+                    "note": "Variable is set in shell profile but not active in current process"
+                }
+    
+    return {"status": "error", "message": f"{var_name} is not set."}
 
 def set_env_variable(var_name, value, scope="user"):
     """Set an environment variable persistently on Mac (adds to shell profile)."""
@@ -103,31 +124,40 @@ def is_port_open(port):
         return {"status": "error", "message": str(e)}
 
 def is_service_running(service_name):
-    """Check if a Mac service (launchd) is running."""
+    """Check if a Mac service (launchd) is running - user services only."""
     try:
-        # Check if it's a user service
+        # Only check user services to avoid sudo prompts during demo
         result = subprocess.run(
-            ["launchctl", "list", service_name], 
-            capture_output=True, 
-            text=True
+            ["launchctl", "list", service_name],
+            capture_output=True,
+            text=True,
+            timeout=10  # Add timeout
         )
         
         if result.returncode == 0:
-            return {"status": "running", "service": service_name, "scope": "user"}
-        
-        # Check if it's a system service
-        result = subprocess.run(
-            ["sudo", "launchctl", "list", service_name], 
-            capture_output=True, 
-            text=True
-        )
-        
-        if result.returncode == 0:
-            return {"status": "running", "service": service_name, "scope": "system"}
-        
-        return {"status": "not_running", "service": service_name}
+            return {
+                "status": "running", 
+                "service": service_name, 
+                "scope": "user",
+                "message": f"Service {service_name} is running (user scope)"
+            }
+        else:
+            return {
+                "status": "not_running", 
+                "service": service_name,
+                "message": f"Service {service_name} is not running or not found"
+            }
+            
+    except subprocess.TimeoutExpired:
+        return {
+            "status": "error", 
+            "message": f"Service check for {service_name} timed out"
+        }
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        return {
+            "status": "error", 
+            "message": f"Failed to check service {service_name}: {str(e)}"
+        }
 
 def detect_user_shell():
     """Detect the user's current shell."""
@@ -141,7 +171,8 @@ def detect_user_shell():
         result = subprocess.run(
             ["dscl", ".", "-read", f"/Users/{os.getenv('USER')}", "UserShell"],
             capture_output=True,
-            text=True
+            text=True,
+            timeout=30
         )
         
         if result.returncode == 0:
@@ -175,7 +206,8 @@ def get_system_info():
         result = subprocess.run(
             ["system_profiler", "SPSoftwareDataType", "-json"],
             capture_output=True,
-            text=True
+            text=True,
+            timeout=30
         )
         
         if result.returncode == 0:
@@ -201,18 +233,20 @@ def get_system_info():
 def check_homebrew():
     """Check if Homebrew is installed and get its status."""
     try:
-        result = subprocess.run(["brew", "--version"], capture_output=True, text=True)
+        result = subprocess.run(["brew", "--version"], capture_output=True, text=True, timeout=30)
         
         if result.returncode == 0:
             version_line = result.stdout.split('\n')[0]
             return {
                 "status": "installed",
                 "version": version_line,
-                "path": subprocess.run(["which", "brew"], capture_output=True, text=True).stdout.strip()
+                "path": subprocess.run(["which", "brew"], capture_output=True, text=True, timeout=30).stdout.strip()
             }
         else:
             return {"status": "not_installed", "message": "Homebrew is not installed"}
             
+    except subprocess.TimeoutExpired:
+        return {"status": "error", "message": "Homebrew check timed out"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
@@ -220,19 +254,19 @@ def get_java_info():
     """Get Java installation information on Mac."""
     try:
         # First try to get Java version directly
-        version_result = subprocess.run(["java", "-version"], capture_output=True, text=True)
+        version_result = subprocess.run(["java", "-version"], capture_output=True, text=True, timeout=30)
         
         if version_result.returncode == 0:
             version_info = version_result.stderr if version_result.stderr else version_result.stdout
             
             # Try to get Java home from java_home command
-            java_home_result = subprocess.run(["/usr/libexec/java_home"], capture_output=True, text=True)
+            java_home_result = subprocess.run(["/usr/libexec/java_home"], capture_output=True, text=True, timeout=30)
             
             if java_home_result.returncode == 0:
                 java_home = java_home_result.stdout.strip()
             else:
                 # If java_home fails, try to detect Homebrew Java
-                which_result = subprocess.run(["which", "java"], capture_output=True, text=True)
+                which_result = subprocess.run(["which", "java"], capture_output=True, text=True, timeout=30)
                 if which_result.returncode == 0:
                     java_path = which_result.stdout.strip()
                     # For Homebrew Java, derive JAVA_HOME from the java binary path
@@ -250,7 +284,7 @@ def get_java_info():
                 "status": "installed",
                 "java_home": java_home,
                 "version_info": version_info.split('\n')[0] if version_info else "Unknown",
-                "java_path": subprocess.run(["which", "java"], capture_output=True, text=True).stdout.strip()
+                "java_path": subprocess.run(["which", "java"], capture_output=True, text=True, timeout=30).stdout.strip()
             }
         else:
             return {"status": "not_installed", "message": "Java is not installed or not found"}
@@ -281,7 +315,7 @@ def set_java_home(java_path=None):
 def check_xcode_tools():
     """Check if Xcode command line tools are installed."""
     try:
-        result = subprocess.run(["xcode-select", "-p"], capture_output=True, text=True)
+        result = subprocess.run(["xcode-select", "-p"], capture_output=True, text=True, timeout=30)
         
         if result.returncode == 0:
             return {
@@ -291,7 +325,9 @@ def check_xcode_tools():
             }
         else:
             return {"status": "not_installed", "message": "Xcode command line tools are not installed"}
-            
+    
+    except subprocess.TimeoutExpired:
+        return {"status": "error", "message": "Xcode tools check timed out"}        
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
@@ -318,7 +354,8 @@ def switch_java_version(version):
             result = subprocess.run(
                 ["brew", "--prefix", f"openjdk@{version}"], 
                 capture_output=True, 
-                text=True
+                text=True,
+                timeout=30
             )
             if result.returncode == 0:
                 brew_prefix = result.stdout.strip()
