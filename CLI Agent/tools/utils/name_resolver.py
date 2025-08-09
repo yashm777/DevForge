@@ -10,7 +10,7 @@ def resolve_tool_name(raw_name: str, os_type: str, version: str = "latest", cont
             "classic_snap": bool
         }
     """
-    normalized = raw_name.lower()
+    normalized = (raw_name or "").strip().lower()
     os_type = os_type.lower()
     fallback = None
 
@@ -84,36 +84,37 @@ def resolve_tool_name(raw_name: str, os_type: str, version: str = "latest", cont
 
     if os_type == "linux":
         if normalized == "java":
-            if context == "version_check":
+            # For checks, avoid leaking 'default-jdk' into dpkg probes
+            if context in ("version_check", "status"):
                 return {
                     "name": "java",
                     "fallback": None,
                     "classic_snap": False,
-                    "manager": "sdkman",
+                    "manager": None,          # don't force a manager during checks
                     "sdk_candidate": "java",
-                    "apt_name": "default-jdk",
+                    "apt_name": None,         # prevent 'default-jdk' checks
                     "snap_name": "java",
                 }
-            # Install context
-            if version.strip() != "latest":
-                apt_pkg = f"openjdk-{version}-jdk"  # e.g., openjdk-17-jdk
+            # Versioned installs prefer apt (e.g., openjdk-17-jdk)
+            if version and version.strip() != "latest":
+                apt_pkg = f"openjdk-{version}-jdk"
                 return {
-                    "name": apt_pkg,
+                    "name": "java",
                     "fallback": None,
                     "classic_snap": False,
-                    "manager": "apt",            # prefer apt for explicit versioned JDK
-                    "sdk_candidate": "java",      # keep for fallback path
+                    "manager": "apt",
+                    "sdk_candidate": "java",
                     "apt_name": apt_pkg,
                     "snap_name": "java",
                 }
-            # latest: prefer SDKMAN, with apt fallback preset
+            # Latest prefers SDKMAN, keep apt fallback only for install
             return {
                 "name": "java",
                 "fallback": None,
                 "classic_snap": False,
                 "manager": "sdkman",
                 "sdk_candidate": "java",
-                "apt_name": "default-jdk",
+                "apt_name": "default-jdk",  # install fallback only
                 "snap_name": "java",
             }
 
