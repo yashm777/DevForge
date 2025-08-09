@@ -273,15 +273,43 @@ def check_version(tool_name: str, version: str = "latest") -> dict:
     alias_list = TOOL_ALIASES.get(normalized, [normalized])
     probe_names = list(dict.fromkeys(alias_list + [apt_name, snap_name, resolved.get("name", normalized)]))
 
-    # 1) Executable-based detection
+    # Simplified Java path: only report the active runtime (java -version)
+    if normalized == "java":
+        exe_path = find_executable("java", ["java"])
+        if exe_path:
+            v = _java_version_from_java()
+            if v:
+                return {
+                    "status": "success",
+                    "message": f"java version {v} via executable",
+                    "tool": "java",
+                    "version": v,
+                    "source": "executable",
+                    "path": exe_path,
+                }
+        # Optional minimal fallback: SDKMAN current
+        v = _sdkman_current("java")
+        if v:
+            return {
+                "status": "success",
+                "message": f"java version {v} via SDKMAN",
+                "tool": "java",
+                "version": v,
+                "source": "sdkman",
+                "path": "",
+            }
+        return {
+            "status": "error",
+            "message": "java is not in PATH or version could not be determined."
+        }
+
+    # Generic path for other tools
     exe_path = find_executable(normalized, probe_names)
     detected_version = None
     tool_key = normalized
 
     if exe_path:
-        if normalized == "java":
-            detected_version = _java_version_from_java()
-        elif normalized in ("maven", "mvn"):
+        if normalized in ("maven", "mvn"):
             detected_version = _maven_version()
             tool_key = "maven"
         elif normalized == "gradle":
@@ -311,72 +339,46 @@ def check_version(tool_name: str, version: str = "latest") -> dict:
             )
 
         if detected_version:
-            result = {
+            return {
                 "status": "success",
-                "message": f"Version detected for {tool_name}: {detected_version}", 
+                "message": f"{tool_key} version {detected_version} via executable",
                 "tool": tool_key,
                 "version": detected_version,
                 "source": "executable",
                 "path": exe_path,
             }
-            if tool_key == "java":
-                details = {}
-                # Current and all alternatives with inferred versions
-                try:
-                    alt_info = _java_alternatives_info()
-                    if alt_info.get("current_path") or alt_info.get("alternatives"):
-                        details["alternatives"] = alt_info
-                except Exception:
-                    pass
-                # Installed apt OpenJDK packages with versions
-                try:
-                    dpkg_java = _dpkg_java_packages()
-                    if dpkg_java:
-                        details["apt_packages"] = dpkg_java
-                except Exception:
-                    pass
-                # SDKMAN installed and current
-                try:
-                    sdk_java = _sdkman_java_installed()
-                    if sdk_java.get("installed") or sdk_java.get("current"):
-                        details["sdkman"] = sdk_java
-                except Exception:
-                    pass
-                if details:
-                    result["details"] = details
-            return result
 
-    # 2) dpkg metadata
+    # 2) dpkg metadata (non-Java)
     ver = _dpkg_version(apt_name)
     if ver:
         return {
             "status": "success",
-            "message": f"Version detected for {tool_name}: {detected_version}",
+            "message": f"{normalized} version {ver} via dpkg (package {apt_name})",
             "tool": normalized,
             "version": ver,
             "source": "dpkg",
             "path": exe_path or _which(tool_name) or _which(apt_name) or "",
         }
 
-    # 3) snap metadata
+    # 3) snap metadata (non-Java)
     ver = _snap_version(snap_name)
     if ver:
         return {
             "status": "success",
-           "message": f"Version detected for {tool_name}: {detected_version}",
+            "message": f"{normalized} version {ver} via snap (package {snap_name})",
             "tool": normalized,
             "version": ver,
             "source": "snap",
             "path": exe_path or _which(tool_name) or _which(snap_name) or "",
         }
 
-    # 4) SDKMAN current
+    # 4) SDKMAN current (non-Java candidates)
     if sdk_candidate:
         ver = _sdkman_current(sdk_candidate)
         if ver:
             return {
                 "status": "success",
-                "message": f"Version detected for {tool_name}: {detected_version} via SDKMAN",
+                "message": f"{normalized} version {ver} via SDKMAN",
                 "tool": normalized,
                 "version": ver,
                 "source": "sdkman",
