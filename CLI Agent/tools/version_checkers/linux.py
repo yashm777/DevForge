@@ -16,8 +16,7 @@ def _run(cmd: List[str], timeout: int = 8) -> subprocess.CompletedProcess:
     try:
         return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     except Exception as e:
-        cp = subprocess.CompletedProcess(cmd, returncode=1, stdout="", stderr=str(e))
-        return cp
+        return subprocess.CompletedProcess(cmd, returncode=1, stdout="", stderr=str(e))
 
 def _which(name: str) -> Optional[str]:
     return shutil.which(name)
@@ -34,11 +33,11 @@ def _strip_v(s: str) -> str:
     return s[1:] if s and s.startswith("v") else s
 
 def _extract_semver(text: str) -> Optional[str]:
-    # Try semantic-like patterns first (with optional pre-release/build)
+    # Prefer semver-ish first
     m = re.search(r"\b(\d+\.\d+\.\d+(?:[-+._][0-9A-Za-z.-]+)?)\b", text)
     if m:
         return m.group(1)
-    # Fallback to simpler version patterns (e.g., 21, 21.0, 17.0.9)
+    # Fallback to simpler numeric versions
     m = re.search(r"\b(\d{1,4}(?:\.\d+){0,2})\b", text)
     if m:
         return m.group(1)
@@ -59,59 +58,51 @@ def _exec_version(cmd: List[str], strip_leading_v: bool = False) -> Optional[str
 def _java_version_from_java() -> Optional[str]:
     r = _run(["java", "-version"])
     out = _first_nonempty(r.stdout, r.stderr) or ""
-    # Common patterns:
+    # Patterns:
     # openjdk version "17.0.9" 2023-10-17
     # java version "1.8.0_362"
     m = re.search(r'version\s+"([^"]+)"', out)
     if m:
         return m.group(1)
-    # fallback generic
     return _extract_semver(out)
 
 def _maven_version() -> Optional[str]:
-    # mvn -v -> "Apache Maven 3.9.6" ...
     r = _run(["mvn", "-v"])
     out = _first_nonempty(r.stdout, r.stderr) or ""
     m = re.search(r"Apache Maven\s+([0-9][^ \n\r\t]+)", out)
     return m.group(1) if m else _extract_semver(out)
 
 def _gradle_version() -> Optional[str]:
-    # gradle -v -> "Gradle 8.9"
     r = _run(["gradle", "-v"])
     out = _first_nonempty(r.stdout, r.stderr) or ""
     m = re.search(r"Gradle\s+([0-9][^ \n\r\t]+)", out)
     return m.group(1) if m else _extract_semver(out)
 
 def _kubectl_version() -> Optional[str]:
-    # kubectl version --client --short -> "Client Version: v1.29.3"
     r = _run(["kubectl", "version", "--client", "--short"])
     out = _first_nonempty(r.stdout, r.stderr) or ""
     m = re.search(r"Client Version:\s*v?([0-9][^ \n\r\t]+)", out)
     return m.group(1) if m else _extract_semver(out)
 
 def _terraform_version() -> Optional[str]:
-    # terraform version -> "Terraform v1.6.6"
     r = _run(["terraform", "version"])
     out = _first_nonempty(r.stdout, r.stderr) or ""
     m = re.search(r"Terraform\s+v?([0-9][^ \n\r\t]+)", out)
     return m.group(1) if m else _extract_semver(out)
 
 def _code_version() -> Optional[str]:
-    # code --version (first line is version)
     r = _run(["code", "--version"])
     out = _first_nonempty(r.stdout, r.stderr) or ""
     line0 = out.splitlines()[0].strip() if out else ""
     return line0 or _extract_semver(out)
 
 def _go_version() -> Optional[str]:
-    # go version -> "go version go1.22.3 linux/amd64"
     r = _run(["go", "version"])
     out = _first_nonempty(r.stdout, r.stderr) or ""
     m = re.search(r"go\s+version\s+go([0-9][^ \n\r\t]+)", out)
     return m.group(1) if m else _extract_semver(out)
 
 def _dotnet_version() -> Optional[str]:
-    # dotnet --version -> "8.0.301"
     return _exec_version(["dotnet", "--version"])
 
 # ---------- package manager fallbacks (Debian/Ubuntu focus) ----------
@@ -119,17 +110,14 @@ def _dotnet_version() -> Optional[str]:
 def _dpkg_version(pkg: str) -> Optional[str]:
     if not shutil.which("dpkg"):
         return None
-    # dpkg -s gives a "Version: x" field (preferable)
     r = _run(["dpkg", "-s", pkg])
     if r.returncode == 0:
         for line in (r.stdout or "").splitlines():
             if line.lower().startswith("version:"):
                 return line.split(":", 1)[1].strip()
-    # fallback dpkg -l (3rd column is version)
     r = _run(["dpkg", "-l", pkg])
     if r.returncode == 0:
-        lines = (r.stdout or "").splitlines()
-        for line in lines:
+        for line in (r.stdout or "").splitlines():
             if line.startswith("ii"):
                 parts = line.split()
                 if len(parts) >= 3:
@@ -149,7 +137,7 @@ def _snap_version(snap_name: str) -> Optional[str]:
     return None
 
 def _sdkman_current(candidate: str) -> Optional[str]:
-    # Try to read SDKMAN current if available (non-root HOME)
+    # Read SDKMAN current for non-root user if present
     home = os.path.expanduser(f"~{os.environ.get('SUDO_USER')}") if os.environ.get("SUDO_USER") else os.path.expanduser("~")
     init_path = os.path.join(home, ".sdkman", "bin", "sdkman-init.sh")
     if not os.path.isfile(init_path):
@@ -157,16 +145,13 @@ def _sdkman_current(candidate: str) -> Optional[str]:
     cmd = ['bash', '-lc', f'source "{init_path}"; sdk current {candidate}']
     r = _run(cmd)
     out = _first_nonempty(r.stdout, r.stderr) or ""
-    # Using java version 21.0.3-tem
     m = re.search(r"Using\s+[A-Za-z]+\s+version\s+([^\s]+)", out)
     if m:
         return m.group(1)
-    # Or any semver-like token
     return _extract_semver(out)
 
 # ---------- main API ----------
 
-# Aliases for PATH probing
 TOOL_ALIASES: Dict[str, List[str]] = {
     "python": ["python3", "python"],
     "pip": ["pip3", "pip"],
@@ -198,18 +183,116 @@ def find_executable(tool_name: str, candidates: List[str]) -> Optional[str]:
 
 def check_version(tool_name: str, version: str = "latest") -> dict:
     """
-    Returns a consistent object:
     - success: {"status": "success", "message": "...", "tool": name, "version": "...", "source": "...", "path": "...", "details": {...}}
-    - error:   {"status": "error", "message": "..."}
+    - error:   {"status": "error", "message": "...}
     """
-    # Example usage of tool_name and version to avoid unused variable errors
-    result = {
-        "status": "success",
-        "message": f"Checked version for {tool_name}",
-        "tool": tool_name,
-        "version": version,
-        "source": "dummy",
-        "path": None,
-        "details": {}
+    normalized = (tool_name or "").strip().lower()
+    resolved = resolve_tool_name(normalized, os_type="linux", version=version, context="version_check") or {}
+
+    apt_name = resolved.get("apt_name") or resolved.get("name") or normalized
+    snap_name = resolved.get("snap_name") or normalized
+    sdk_candidate = resolved.get("sdk_candidate")
+
+    # PATH probing names
+    alias_list = TOOL_ALIASES.get(normalized, [normalized])
+    probe_names = list(dict.fromkeys(alias_list + [apt_name, snap_name, resolved.get("name", normalized)]))
+
+    # 1) Executable-based detection
+    exe_path = find_executable(normalized, probe_names)
+    detected_version = None
+    tool_key = normalized
+
+    if exe_path:
+        if normalized == "java":
+            detected_version = _java_version_from_java()
+        elif normalized in ("maven", "mvn"):
+            detected_version = _maven_version()
+            tool_key = "maven"
+        elif normalized == "gradle":
+            detected_version = _gradle_version()
+        elif normalized == "kubectl":
+            detected_version = _kubectl_version()
+        elif normalized == "terraform":
+            detected_version = _terraform_version()
+        elif normalized in ("vscode", "code"):
+            detected_version = _code_version()
+            tool_key = "vscode"
+        elif normalized == "go":
+            detected_version = _go_version()
+        elif normalized == "dotnet":
+            detected_version = _dotnet_version()
+        elif normalized in ("node", "nodejs"):
+            detected_version = _exec_version([exe_path, "--version"], strip_leading_v=True)
+            tool_key = "node"
+        elif normalized == "npm":
+            detected_version = _exec_version([exe_path, "--version"], strip_leading_v=True)
+        else:
+            detected_version = (
+                _exec_version([exe_path, "--version"]) or
+                _exec_version([exe_path, "-v"]) or
+                _exec_version([exe_path, "-V"]) or
+                _exec_version([exe_path, "version"])
+            )
+
+        if detected_version:
+            result = {
+                "status": "success",
+                "message": f"Version detected for {tool_name}",
+                "tool": tool_key,
+                "version": detected_version,
+                "source": "executable",
+                "path": exe_path,
+            }
+            if tool_key == "java":
+                details = {}
+                try:
+                    alt = _run(["update-alternatives", "--list", "java"])
+                    if alt.returncode == 0:
+                        details["installed_alternatives"] = (alt.stdout or "").strip().splitlines()
+                except Exception:
+                    pass
+                if details:
+                    result["details"] = details
+            return result
+
+    # 2) dpkg metadata
+    ver = _dpkg_version(apt_name)
+    if ver:
+        return {
+            "status": "success",
+            "message": f"Version detected for {tool_name} via dpkg",
+            "tool": normalized,
+            "version": ver,
+            "source": "dpkg",
+            "path": exe_path or _which(tool_name) or _which(apt_name) or "",
+        }
+
+    # 3) snap metadata
+    ver = _snap_version(snap_name)
+    if ver:
+        return {
+            "status": "success",
+            "message": f"Version detected for {tool_name} via snap",
+            "tool": normalized,
+            "version": ver,
+            "source": "snap",
+            "path": exe_path or _which(tool_name) or _which(snap_name) or "",
+        }
+
+    # 4) SDKMAN current
+    if sdk_candidate:
+        ver = _sdkman_current(sdk_candidate)
+        if ver:
+            return {
+                "status": "success",
+                "message": f"Version detected for {tool_name} via SDKMAN",
+                "tool": normalized,
+                "version": ver,
+                "source": "sdkman",
+                "path": exe_path or "",
+            }
+
+    return {
+        "status": "error",
+        "message": f"{tool_name} is not installed, not in PATH, or version could not be determined."
     }
-    return result
