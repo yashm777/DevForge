@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import sys
 import subprocess
 import time
@@ -28,43 +26,85 @@ app = typer.Typer(
 mcp_client = None
 
 def format_result(result: Dict[str, Any]) -> str:
-    """Format the result object into a clean, readable string or table"""
+    """Format the result object, but passthrough git_setup messages as-is."""
     if isinstance(result, dict):
-        # Extract the actual message from the result
-        if "result" in result and isinstance(result["result"], dict):
-            inner_result = result["result"]
-            # If it's a plain info dict (like system info), pretty print as table
-            if all(isinstance(v, (str, int, float)) for v in inner_result.values()):
-                table = Table(show_header=False, box=None)
-                for k, v in inner_result.items():
-                    table.add_row(f"[bold]{k}[/bold]", str(v))
-                return table
-            if "message" in inner_result:
-                return inner_result["message"]
-            elif "status" in inner_result:
-                status = inner_result["status"]
-                message = inner_result.get("message", "")
-                if status == "success":
-                    return f"✓ {message}" if message else "✓ Operation completed successfully"
-                elif status == "error":
-                    return f"✗ {message}" if message else "✗ Operation failed"
-                else:
-                    return message
-            else:
-                return str(inner_result)
-        elif "message" in result:
-            return result["message"]
-        elif "status" in result:
-            status = result["status"]
-            message = result.get("message", "")
+        # Only passthrough for git-related actions
+        git_actions = {"generate_ssh_key", "add_ssh_key", "clone", "check_ssh_key_auth", "check_ssh", "get_public_key"}
+        if result.get("action") in git_actions:
+            # Prefer details.message if present
+            if "details" in result and isinstance(result["details"], dict):
+                msg = result["details"].get("message")
+                if msg:
+                    return msg
+            # Fallback to result.message if present
+            if "result" in result and isinstance(result["result"], dict):
+                msg = result["result"].get("message")
+                if msg:
+                    return msg
+            # Fallback to top-level message
+            msg = result.get("message")
+            if msg:
+                return msg
+            # If nothing found, show a generic message for git actions
+            return "No message returned from git operation."
+        # --- Default formatting for all other tools ---
+        status = result.get("status")
+        message = result.get("message", "")
+        
+        # Special handling for system_config results (env variables)
+        if "variable" in result and "value" in result:
+            variable = result.get("variable")
+            value = result.get("value")
+            source = result.get("source", "")
             if status == "success":
-                return f"✓ {message}" if message else "✓ Operation completed successfully"
+                if source == "shell_profile":
+                    return f"✓ {variable} = {value} (in shell profile, restart terminal to activate)"
+                else:
+                    return f"✓ {variable} = {value}"
             elif status == "error":
-                return f"✗ {message}" if message else "✗ Operation failed"
-            else:
-                return message
+                return f"✗ {message}" if message else "✗ Environment variable not found"
+        
+        # Special handling for port-related results
+        if "port" in result:
+            port = result.get("port")
+
+            # Show processes on port
+            if "processes" in result and isinstance(result.get("processes"), list):
+                processes = result.get("processes") or []
+                if status == "not_found" or not processes:
+                    return f"! No process found on port {port}"
+                # Build a concise summary (show up to 3 entries)
+                preview = []
+                for p in processes[:3]:
+                    pid = p.get("pid", "?")
+                    name = p.get("name") or p.get("exe") or ""
+                    preview.append(f"{pid}{' ' + name if name else ''}")
+                suffix = " ..." if len(processes) > 3 else ""
+                return f"✓ {len(processes)} process(es) listening on port {port}: " + ", ".join(preview) + suffix
+
+            # Fallback: simple is_port_open formatting
+            if status == "success" or status == "free":
+                return f"✓ Port {port} is free"
+            elif status == "in_use":
+                return f"! Port {port} is in use"
+            elif status == "error":
+                return f"✗ {message}" if message else f"✗ Error checking port {port}"
+        
+        # Special handling for environment variable listing
+        if "variables" in result and isinstance(result.get("variables"), dict):
+            var_count = len(result["variables"])
+            if status == "success":
+                return f"✓ Found {var_count} environment variables"
+            
+        # Default formatting
+        if status == "success":
+            return f"✓ {message}" if message else "✓ Operation completed successfully"
+        elif status == "error":
+            return f"✗ {message}" if message else "✗ Operation failed"
+        elif status == "warning":
+            return f"! {message}" if message else "! Warning"
         else:
-            return str(result)
+            return message or str(result)
     else:
         return str(result)
 
@@ -90,93 +130,140 @@ def run(
     output_file: str = typer.Option(None, "--output", "-o", help="Output file path for code generation (optional)"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose output")
 ):
-    """Run any dev environment or tool management request in natural language."""
     if not setup_instances():
         return
+
     try:
         parsed = parse_user_command(command)
-        if verbose:
-            console.print(f"[yellow]Parsed result: {parsed}[/yellow]")
-        if "error" in parsed:
+
+        if isinstance(parsed, dict) and "error" in parsed:
             console.print(f"[red]Error parsing command: {parsed['error']}[/red]")
-            if "fallback" in parsed:
-                console.print(f"[yellow]Suggestion: {parsed['fallback']}[/yellow]")
             return
-        action = parsed.get("action") or parsed.get("params", {}).get("task")
-        tool_name = parsed.get("tool_name") or parsed.get("params", {}).get("tool_name")
-        version = parsed.get("version", "latest") if "version" in parsed else parsed.get("params", {}).get("version", "latest")
-        # Handle code generation
-        if parsed.get("method") == "generate_code":
-            description = parsed["params"].get("description", "")
-            code = mcp_client.generate_code(description)
-            if code and not code.startswith("[Error]"):
-                if output_file:
-                    with open(output_file, 'w', encoding='utf-8') as f:
-                        f.write(code)
-                    console.print(f"[green]Code written to {output_file}[/green]")
-                else:
-                    syntax = Syntax(code, "python", theme="monokai", line_numbers=True)
-                    console.print(Panel(syntax, title="Generated Code", border_style="green"))
-            else:
-                console.print(f"[red]Code generation failed: {code}[/red]")
+            
+        # Handle special case when parser returns a manual URL
+        if isinstance(parsed, dict) and "manual_url" in parsed and not parsed.get("method"):
+            url = parsed["manual_url"]
+            console.print(f"[yellow]The tool '{command.split()[1] if len(command.split()) > 1 else command}' requires manual installation.[/yellow]")
+            console.print(f"[blue]Please download from: {url}[/blue]")
             return
-        elif action == "install":
-            console.print("[cyan]Contacting MCP server for install...[/cyan]")
-            result = mcp_client.tool_action(action, tool_name, version)
-            result_data = result.get("result", result)
-            if verbose:
-                console.print(f"[yellow]Debug - Result: {result}[/yellow]")
-                console.print(f"[yellow]Debug - Result data: {result_data}[/yellow]")
-            if result_data.get("status") == "ambiguous":
-                options = result_data.get("options", [])
-                if options:
-                    table = Table(title="Multiple Packages Found", show_lines=True)
-                    table.add_column("No.", style="cyan", justify="right")
-                    table.add_column("Name", style="bold")
-                    table.add_column("ID")
-                    table.add_column("Source")
-                    for idx, opt in enumerate(options, 1):
-                        table.add_row(str(idx), opt["name"], opt["id"], opt["source"])
-                    console.print(table)
-                    console.print("[yellow]Waiting for your selection...[/yellow]")
-                    try:
-                        choice = int(input("Enter the number of the package you want to install: "))
-                        console.print(f"[green]You selected: {choice}[/green]")
-                    except (ValueError, KeyboardInterrupt):
-                        console.print("[red]Invalid input or cancelled. Aborting.[/red]")
-                        return
-                    if 1 <= choice <= len(options):
-                        selected = options[choice-1]
-                        console.print(f"[green]Installing {selected['name']} (ID: {selected['id']})...[/green]")
-                        result2 = mcp_client.call_jsonrpc("tool_action_wrapper", {
-                            "task": "install_by_id",
-                            "tool_name": selected['id'],
-                            "version": version
-                        })
-                        result2_data = result2.get("result", result2)
-                        formatted_result = format_result(result2)
-                        console.print(Panel(formatted_result, title=f"{action.capitalize()} {selected['name']}", border_style="green"))
+
+        if isinstance(parsed, dict):
+            parsed = [parsed]
+
+        for i, action_item in enumerate(parsed, start=1):
+            method = action_item.get("method")
+            params = action_item.get("params", {})
+
+            # Special case for installs
+            if params.get("task") == "install":
+                tool_name = params.get("tool_name")
+                version = params.get("version", "latest")
+
+                console.print("[cyan]Contacting MCP server for install...[/cyan]")
+                result = mcp_client.tool_action("install", tool_name, version)
+                result_data = result.get("result", result)
+
+                if result_data.get("status") == "ambiguous":
+                    options = result_data.get("options", [])
+                    if options:
+                        table = Table(title="Multiple Packages Found", show_lines=True)
+                        table.add_column("No.", style="cyan", justify="right")
+                        table.add_column("Name", style="bold")
+                        table.add_column("ID")
+                        table.add_column("Source")
+                        for idx, opt in enumerate(options, 1):
+                            table.add_row(str(idx), opt["name"], opt["id"], opt["source"])
+                        console.print(table)
+
+                        try:
+                            choice = int(input("Enter the number of the package you want to install: "))
+                            if 1 <= choice <= len(options):
+                                selected = options[choice - 1]
+                                console.print(f"[green]Installing {selected['name']} (ID: {selected['id']})...[/green]")
+                                result2 = mcp_client.call_jsonrpc("tool_action_wrapper", {
+                                    "task": "install_by_id",
+                                    "tool_name": selected['id'],
+                                    "version": version
+                                })
+                                formatted_result = format_result(result2)
+                                console.print(Panel(formatted_result, title=f"Install {selected['name']}", border_style="green"))
+                            else:
+                                console.print("[red]Invalid selection. Aborting.[/red]")
+                        except (ValueError, KeyboardInterrupt):
+                            console.print("[red]Invalid input or cancelled. Aborting.[/red]")
                     else:
-                        console.print("[red]Invalid selection. Aborting.[/red]")
-                        return
+                        console.print("[red]No package options found in ambiguous result.[/red]")
                 else:
-                    console.print("[red]No package options found in ambiguous result.[/red]")
-                    return
+                    # Extract the inner result for proper formatting
+                    result_data = result.get("result", result)
+                    formatted_result = format_result(result_data)
+                    console.print(Panel(formatted_result, title=f"Install {tool_name}", border_style="green"))
+                continue
+            
+            if method == "install_vscode_extension":
+                extension_id = params.get("extension_id") or params.get("tool_name")
+                result = mcp_client.call_jsonrpc("tool_action_wrapper", {
+                    "task": "install_vscode_extension",
+                    "extension_id": extension_id
+                })
+                # Extract the inner result for proper formatting
+                result_data = result.get("result", result)
+                formatted_result = format_result(result_data)
+                console.print(Panel(formatted_result, title=f"Install VSCode Extension", border_style="green"))
+                continue
+                
+            if method == "uninstall_vscode_extension":
+                extension_id = params.get("extension_id") or params.get("tool_name")
+                result = mcp_client.call_jsonrpc("uninstall_vscode_extension", {
+                    "extension_id": extension_id
+                })
+                # Extract the inner result for proper formatting
+                result_data = result.get("result", result)
+                formatted_result = format_result(result_data)
+                console.print(Panel(formatted_result, title=f"Uninstall VSCode Extension", border_style="green"))
+                continue
+
+            # Code generation case
+            if method == "generate_code":
+                description = params.get("description", "")
+                code = mcp_client.generate_code(description)
+                if code and not code.startswith("[Error]"):
+                    if output_file:
+                        with open(output_file, 'w', encoding='utf-8') as f:
+                            f.write(code)
+                        console.print(f"[green]Code written to {output_file}[/green]")
+                    else:
+                        syntax = Syntax(code, "python", theme="monokai", line_numbers=True)
+                        console.print(Panel(syntax, title=f"Generated Code (Step {i})", border_style="green"))
+                else:
+                    console.print(f"[red]Code generation failed: {code}[/red]")
+                continue
+
+            # Default for all other tasks
+            result = mcp_client.call_jsonrpc(method, params)
+
+            # Custom handling for git_setup method
+            if method == "git_setup":
+                # Always extract the inner 'result' dict if present
+                if isinstance(result, dict) and "result" in result and isinstance(result["result"], dict):
+                    formatted_result = format_result(result["result"])
+                else:
+                    formatted_result = format_result(result)
+                console.print(Panel(formatted_result, title=f"Step {i}: {method}", border_style="green"))
+                continue
+
+            # For all other methods, assign formatted_result before printing
+            if isinstance(result, dict) and "result" in result and isinstance(result["result"], dict):
+                formatted_result = format_result(result["result"])
             else:
                 formatted_result = format_result(result)
-                console.print(Panel(formatted_result, title=f"{action.capitalize()} {tool_name}", border_style="green"))
-        elif action in ("uninstall", "update", "version"):
-            result = mcp_client.tool_action(action, tool_name, version)
-            formatted_result = format_result(result)
-            console.print(Panel(formatted_result, title=f"{action.capitalize()} {tool_name}", border_style="green"))
-        elif parsed.get("method") and parsed.get("params") is not None:
-            result = mcp_client.call_jsonrpc(parsed["method"], parsed["params"])
-            formatted_result = format_result(result)
-            console.print(Panel(formatted_result, title=f"{parsed['method']}", border_style="green"))
-        else:
-            console.print(f"[red]Unknown or unsupported action: {action}[/red]")
+
+            console.print(Panel(formatted_result, title=f"Step {i}: {method}", border_style="green"))
+
     except Exception as e:
         console.print(f"[red]Error executing command: {str(e)}[/red]")
+
+
 
 @app.command()
 def logs(
@@ -250,4 +337,4 @@ def main():
     app()
 
 if __name__ == "__main__":
-    main() 
+    main()

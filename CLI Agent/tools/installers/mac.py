@@ -1,33 +1,86 @@
-import subprocess
-import shutil
+"""
+Mac Tool Installer
 
-def install_mac_tool(tool, version="latest"):
-    if not shutil.which("brew"):
-        try:
-            install_brew_cmd = [
-                "/bin/bash", "-c", 
-                "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-            ]
-            brew_result = subprocess.run(install_brew_cmd, capture_output=True, text=True, timeout=300)
-            if brew_result.returncode != 0:
-                return {
-                    "status": "error", 
-                    "message": f"Failed to install Homebrew: {brew_result.stderr.strip() or brew_result.stdout.strip()}"
-                }
-        except Exception as e:
-            return {"status": "error", "message": str(e)}
+This file helps install development tools on Mac computers using Homebrew.
+Enhanced with comprehensive tool management features:
+- Smart version policy enforcement (tools require explicit versions, apps use latest)
+- Proper package classification (tool vs app)
+- Shell-aware configuration updates
+- System Python detection
+"""
 
-    if version != "latest" and tool in ["python", "node", "java", "go", "php"]:
-        cmd = ["brew", "install", f"{tool}@{version}"]
-    else:
-        cmd = ["brew", "install", tool]
+import logging
+from tools.utils.mac_tool_manager import get_manager
+from tools.utils.name_resolver import resolve_tool_name
+from tools.upgraders.mac import get_post_upgrade_instructions
 
+# Set up logging so we can see what happens
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def install_mac_tool(tool_name, version="latest"):
+    """
+    Install a development tool on Mac using Homebrew with enhanced logic.
+    
+    This is the main function that does all the work.
+    
+    Args:
+        tool_name: The name of the tool the user wants (like "cursor" or "docker")
+        version: What version they want (usually "latest")
+    
+    Returns:
+        A dictionary with:
+        - status: "success" if it worked, "error" if it didn't
+        - message: What happened
+        - details: Extra information about what we did
+    """
+    logger.info(f"Starting Mac install: {tool_name} (version: {version})")
+    
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode == 0:
-            return {"status": "success", "message": result.stdout.strip() or f"Installed {tool}"}
+        # Resolve tool name for Mac system (handles Linux package names)
+        resolved = resolve_tool_name(tool_name, "darwin", version, "install")
+        resolved_tool_name = resolved["name"]
+        logger.info(f"Resolved '{tool_name}' to '{resolved_tool_name}' for Mac install")
+        
+        # Use the comprehensive tool manager for installation
+        manager = get_manager()
+        
+        # Build tool specification
+        # Check if the resolved name already includes a version (like node@16)
+        if "@" in resolved_tool_name:
+            # Already has version, use as-is
+            tool_spec = resolved_tool_name
+        elif version != "latest":
+            # Add version to the resolved name
+            tool_spec = f"{resolved_tool_name}@{version}"
         else:
-            return {"status": "error", "message": result.stderr.strip() or result.stdout.strip()}
+            # Use resolved name as-is for latest
+            tool_spec = resolved_tool_name
+        
+        # Install using the enhanced manager
+        result = manager.install_tool(tool_spec)
+        
+        # Enhance successful results with post-installation instructions
+        if result.get("status") == "success" and not result.get("already_installed"):
+            # Extract version from result or tool specification
+            installed_version = result.get("installed_version") or result.get("version")
+            if not installed_version and "@" in tool_spec:
+                # Extract version from tool specification (e.g., openjdk@17 -> 17)
+                installed_version = tool_spec.split("@")[1]
+            elif not installed_version:
+                installed_version = version
+                
+            instructions = get_post_upgrade_instructions(resolved_tool_name, installed_version)
+            if instructions:
+                result["instructions"] = instructions
+                result["message"] = f"{result['message']}\n\nNext steps:\n{instructions}"
+        
+        return result
+        
     except Exception as e:
-        return {"status": "error", "message": str(e)}
-
+        logger.error(f"Installation failed for {tool_name}: {e}")
+        return {
+            "status": "error",
+            "message": f"Installation failed: {str(e)}",
+            "details": {"tool_name": tool_name, "version": version, "error": str(e)}
+        }

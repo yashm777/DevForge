@@ -16,7 +16,7 @@ class HTTPMCPClient:
             "params": params
         }
         try:
-            response = requests.post(self.mcp_url, json=payload, timeout=30)
+            response = requests.post(self.mcp_url, json=payload, timeout=300)
             if response.status_code == 200:
                 return response.json()
             else:
@@ -38,20 +38,92 @@ class HTTPMCPClient:
     
     def get_server_logs(self, lines: int = 50):
         """Get server logs from the MCP server"""
-        return self._make_request("get_logs", {"lines": lines})
+        raw = self._make_request("get_logs", {"lines": lines})
+        # Normalize: server currently returns {'logs': [...]} directly. Wrap into {'result': {'logs': [...]}}
+        if isinstance(raw, dict) and "logs" in raw and "result" not in raw:
+            return {"result": {"logs": raw.get("logs", [])}}
+        return raw
     
     def generate_code(self, description: str):
         result = self._make_request("generate_code", {"description": description})
-        # Handle the nested result structure
-        if "result" in result:
-            inner_result = result["result"]
-            if "code" in inner_result:
-                return inner_result["code"]
-            elif "status" in inner_result and inner_result["status"] == "error":
-                return f"[Error] {inner_result.get('message', 'Code generation failed')}"
-        elif "error" in result:
-            return f"[Error] {result['error']}"
-        return "[Error] No code returned"
+        # Accept both wrapped ({"result": {"code": ...}}) and direct ({"code": ...}) formats
+        try:
+            if not isinstance(result, dict):
+                return "[Error] Unexpected response format"
+
+            # JSON-RPC style wrapper
+            if "result" in result and isinstance(result["result"], dict):
+                inner = result["result"]
+                if "code" in inner:
+                    return inner["code"]
+                if inner.get("status") == "error":
+                    return f"[Error] {inner.get('message', 'Code generation failed')}"
+                # Fall through if no code
+
+            # Direct (current server behavior)
+            if "code" in result:
+                # If status indicates error, surface message
+                if result.get("status") == "error":
+                    return f"[Error] {result.get('message', 'Code generation failed')}"
+                return result["code"]
+
+            # Top-level error key
+            if "error" in result:
+                return f"[Error] {result['error']}"
+
+            # Status error without code
+            if result.get("status") == "error":
+                return f"[Error] {result.get('message', 'Code generation failed')}"
+
+            return "[Error] No code returned"
+        except Exception as e:
+            return f"[Error] Failed to parse code generation response: {e}"
     
     def call_jsonrpc(self, method: str, params: dict):
         return self._make_request(method, params)
+
+    def system_config(self, action: str, tool_name: str, value: Optional[str] = None):
+            """
+            Calls the MCP server for system configuration tasks.
+            """
+            params = {
+                "task": "system_config",
+                "tool_name": tool_name,
+                "action": action
+            }
+            if value:
+                params["value"] = value
+            return self._make_request("tool_action_wrapper", params)
+    
+    def git_setup(self, action: str, repo_url: str = "", branch: str = "", username: str = "", email: str = "", dest_dir: str = "", pat: str = ""):
+        """
+        Perform git-related actions via the MCP server.
+
+        Supported actions:
+          - 'clone': Clone a repository via SSH (only SSH links supported)
+          - 'generate_ssh_key': Generate a new SSH key (does not add to GitHub)
+          - 'add_ssh_key': Add SSH public key to GitHub via API (if PAT provided) or return manual steps
+          - 'check_ssh_key_auth': Check if SSH key is authorized with GitHub
+
+        Parameters:
+          action: The git action to perform (see above)
+          repo_url: Repository URL (required for 'clone')
+          branch: Branch name (optional, for 'clone')
+          username: GitHub username (optional)
+          email: Email address (required for 'generate_ssh_key', 'add_ssh_key')
+          dest_dir: Destination directory (optional, for 'clone')
+          pat: GitHub Personal Access Token (optional, for 'add_ssh_key')
+        """
+        params = {
+            "task": "git_setup",
+            "action": action,
+            "repo_url": repo_url,
+            "branch": branch,
+            "username": username,
+            "email": email,
+            "dest_dir": dest_dir
+        }
+        if pat:
+            params["pat"] = pat
+        return self._make_request("tool_action_wrapper", params)
+

@@ -1,4 +1,5 @@
 # --- File: mcpserver.py ---
+# FastAPI MCP server: routes tool actions to platform-specific handlers
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import uvicorn
@@ -6,33 +7,47 @@ import platform
 import os
 import subprocess
 import logging
-import time
 from datetime import datetime
 from collections import deque
 from tools.code_generator import generate_code
 from tools.installers.mac import install_mac_tool
 from tools.installers.windows import install_windows_tool, install_windows_tool_by_id
+from tools.utils.name_resolver import resolve_tool_name
 from tools.installers.linux import install_linux_tool
 from tools.uninstallers.mac import uninstall_mac_tool
 from tools.uninstallers.windows import uninstall_windows_tool
-from tools.uninstallers.linux import uninstall_tool_linux
-from tools.version_checkers.mac import check_version as check_version_mac
+from tools.uninstallers.linux import uninstall_linux_tool
+from tools.version_checkers.mac import check_version_mac_tool
 from tools.version_checkers.windows import check_version as check_version_windows
 from tools.version_checkers.linux import check_version as check_version_linux
-from tools.upgraders.mac import handle_tool_mac
-from tools.upgraders.windows import handle_tool
-from tools.upgraders.linux import handle_tool
+from tools.upgraders.mac import upgrade_mac_tool
+from tools.upgraders.windows import handle_tool as handle_tool_windows
+from tools.upgraders.linux import handle_tool as handle_tool_linux
+
+# Platform-specific VS Code extension imports
+if platform.system().lower() == "darwin":
+    from tools.installers.vscode_extension_mac import install_mac_vscode_extension as install_vscode_extension_tool, uninstall_mac_vscode_extension as uninstall_vscode_extension_tool
+else:
+    # Default to Windows version for Windows and Linux
+    from tools.installers.vscode_extension import install_extension as install_vscode_extension_tool, uninstall_extension as uninstall_vscode_extension_tool
+
 import traceback
 
-# Configure logging
+# Configure logging (INFO by default)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# In-memory log storage
+# In-memory log storage (ring buffer)
 server_logs = deque(maxlen=1000)  # Keep last 1000 log entries
 
+def _status_of(result, default: str = "unknown") -> str:
+    """Safely extract a status string from various result shapes."""
+    if isinstance(result, dict):
+        return str(result.get("status", default))
+    return default
+    
 def add_log_entry(level: str, message: str, details: dict = None):
-    """Add a log entry to the in-memory log storage"""
+    """Store a structured log entry and print to console."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     log_entry = {
         "timestamp": timestamp,
@@ -46,16 +61,32 @@ def add_log_entry(level: str, message: str, details: dict = None):
 
 app = FastAPI()
 
+# Lightweight health endpoint used by CLI readiness checks
+@app.get("/health")
+def health():
+    """Simple fast readiness probe.
+    Returns 200 as soon as the application object is created (no heavy docs generation).
+    """
+    return {"status": "ok"}
+
 # --- Dispatcher Functions ---
 def install_tool(tool, version="latest"):
+    # OS-aware installer; resolves names on Windows to improve matching
     add_log_entry("INFO", f"Install request for tool: {tool} (version: {version})")
     os_type = platform.system().lower()
+    
+    # Handle Linux-to-Windows package mapping
     if os_type == "windows":
-        result = install_windows_tool(tool, version)
+       # Resolve a user/LLM-provided name to a generic Windows-friendly search term (no hardcoded IDs)
+        resolved = resolve_tool_name(tool, "windows", version, "install")
+        search_term = resolved.get("name", tool)
+        add_log_entry("INFO", f"Resolved '{tool}' to Windows search term '{search_term}'")
+        # Let the Windows installer perform a search and handle ambiguities
+        result = install_windows_tool(search_term, version)
     elif os_type == "darwin":
         result = install_mac_tool(tool, version)
     elif os_type == "linux":
-        result = install_linux_tool(tool,version)
+        result = install_linux_tool(tool, version)
     else:
         result = {"status": "error", "message": f"Unsupported OS: {os_type}"}
     
@@ -64,6 +95,7 @@ def install_tool(tool, version="latest"):
 
 def install_tool_by_id(package_id, version="latest"):
     """Install a specific package by its ID"""
+    # Direct ID-based install (primarily Windows)
     add_log_entry("INFO", f"Install by ID request for package: {package_id} (version: {version})")
     os_type = platform.system().lower()
     if os_type == "windows":
@@ -79,6 +111,7 @@ def install_tool_by_id(package_id, version="latest"):
     return result
 
 def uninstall_tool(tool):
+    # OS-aware uninstaller
     add_log_entry("INFO", f"Uninstall request for tool: {tool}")
     os_type = platform.system().lower()
     if os_type == "windows":
@@ -86,20 +119,37 @@ def uninstall_tool(tool):
     elif os_type == "darwin":
         result = uninstall_mac_tool(tool)
     elif os_type == "linux":
-        result = uninstall_tool_linux(tool)
+        result = uninstall_linux_tool(tool)
     else:
         result = {"status": "error", "message": f"Unsupported OS: {os_type}"}
     
     add_log_entry("INFO", f"Uninstall result for {tool}: {result.get('status', 'unknown')}")
     return result
 
+def install_vscode_extension(extension_id):
+    """Install a VSCode extension."""
+    # Uses platform-appropriate installer module
+    add_log_entry("INFO", f"VSCode extension install request for: {extension_id}")
+    result = install_vscode_extension_tool(extension_id)
+    add_log_entry("INFO", f"VSCode extension install result for {extension_id}: {result.get('status', 'unknown')}")
+    return result
+
+def uninstall_vscode_extension(extension_id):
+    """Uninstall a VSCode extension."""
+    # Uses platform-appropriate uninstaller module
+    add_log_entry("INFO", f"VSCode extension uninstall request for: {extension_id}")
+    result = uninstall_vscode_extension_tool(extension_id)
+    add_log_entry("INFO", f"VSCode extension uninstall result for {extension_id}: {result.get('status', 'unknown')}")
+    return result
+
 def check_version(tool, version="latest"):
+    # OS-aware version checker
     add_log_entry("INFO", f"Version check request for tool: {tool}")
     os_type = platform.system().lower()
     if os_type == "windows":
         result = check_version_windows(tool, version)
     elif os_type == "darwin":
-        result = check_version_mac(tool, version)
+        result = check_version_mac_tool(tool, version)
     elif os_type == "linux":
         result = check_version_linux(tool, version)
     else:
@@ -109,14 +159,15 @@ def check_version(tool, version="latest"):
     return result
 
 def upgrade_tool(tool, version="latest"):
+    # OS-aware upgrade/handler
     add_log_entry("INFO", f"Upgrade request for tool: {tool} (version: {version})")
     os_type = platform.system().lower()
     if os_type == "windows":
-        result = handle_tool(tool, version)
+        result = handle_tool_windows(tool, version)
     elif os_type == "darwin":
-        result = handle_tool_mac(tool, version)
+        result = upgrade_mac_tool(tool, version)
     elif os_type == "linux":
-        result = handle_tool(tool, version)
+        result = handle_tool_linux(tool, version)
     else:
         result = {"status": "error", "message": f"Unsupported OS: {os_type}"}
     
@@ -124,6 +175,7 @@ def upgrade_tool(tool, version="latest"):
     return result
 
 def get_system_info():
+    # Basic server/system diagnostics
     add_log_entry("INFO", "System info request")
     result = {
         "os_type": platform.system(),
@@ -140,7 +192,106 @@ def get_server_logs(lines: int = 50):
     """Get the last N log entries"""
     return list(server_logs)[-lines:]
 
-# Task dispatch dictionary
+def handle_system_config(tool, action="check", value=None, signal_name=None):
+    """
+    System configuration utilities (env, PATH, ports, services).
+    """
+    # Import OS-specific module at call time
+    os_type = platform.system().lower()
+    if os_type == "windows":
+        from tools.system_config import windows as sys_tool
+    elif os_type == "linux":
+        from tools.system_config import linux as sys_tool
+    elif os_type == "darwin":  # macOS
+        from tools.system_config import mac as sys_tool
+    else:
+        return {"status": "error", "message": f"System config tools not implemented for {os_type}"}
+
+    # Action routing (exact match)
+    if action == "check":
+        return sys_tool.check_env_variable(tool)
+    elif action == "set":
+        return sys_tool.set_env_variable(tool, value)
+    elif action == "append_to_path":
+        return sys_tool.append_to_path(tool)
+    elif action == "remove_from_path":
+        return sys_tool.remove_from_path(tool)
+    elif action == "is_port_open":
+        # tool carries port as string; cast to int
+        try:
+            return sys_tool.is_port_open(int(tool))
+        except (TypeError, ValueError):
+            return {"status": "error", "message": "Port must be an integer"}
+    elif action == "is_service_running":
+        return sys_tool.is_service_running(tool)
+    elif action == "remove_env":
+        return sys_tool.remove_env_variable(tool)
+    elif action == "list_env":
+        return sys_tool.list_env_variables()
+    elif action == "get_processes_on_port":
+        # tool carries the port (string)
+        try:
+            port = int(tool)
+        except (TypeError, ValueError):
+            return {"status": "error", "message": "Port must be an integer"}
+        if hasattr(sys_tool, "get_processes_on_port"):
+            return sys_tool.get_processes_on_port(port)
+        return {"status": "error", "message": "get_processes_on_port not implemented for this OS"}
+    else:
+        # Unknown action guard
+        return {"status": "error", "message": f"Unknown system_config action: {action}"}
+
+
+# Add this function to handle git_setup
+def handle_git_setup(action, repo_url="", branch="", username="", email="", dest_dir="", pat=""):
+    # Route git tasks to OS-specific configurator
+    os_type = platform.system().lower()
+    if os_type == "linux":
+        try:
+            from tools.git_configurator.linux import perform_git_setup
+            return perform_git_setup(
+                action=action,
+                repo_url=repo_url,
+                branch=branch,
+                username=username,
+                email=email,
+                dest_dir=dest_dir,
+                pat=pat
+            )
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+    elif os_type == "windows":
+        try:
+            from tools.git_configurator.windows import perform_git_setup
+            return perform_git_setup(
+                action=action,
+                repo_url=repo_url,
+                branch=branch,
+                username=username,
+                email=email,
+                dest_dir=dest_dir,
+                pat=pat
+            )
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+    elif os_type == "darwin":  # macOS
+        try:
+            from tools.git_configurator.mac import perform_git_setup
+            return perform_git_setup(
+                action=action,
+                repo_url=repo_url,
+                branch=branch,
+                username=username,
+                email=email,
+                dest_dir=dest_dir,
+                pat=pat
+            )
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+    else:
+        return {"status": "error", "message": f"Git setup is not supported on OS: {os_type}"}
+
+# Task dispatch dictionary (method -> handler)
 task_handlers = {
     "install": install_tool,
     "install_by_id": install_tool_by_id,
@@ -148,10 +299,15 @@ task_handlers = {
     "update": upgrade_tool,
     "upgrade": upgrade_tool,
     "version": check_version,
+    "system_config": handle_system_config,
+    "install_vscode_extension": install_vscode_extension,
+    "uninstall_vscode_extension": uninstall_vscode_extension,
+    "git_setup": handle_git_setup,
 }
 
 @app.post("/mcp/")
 async def mcp_endpoint(request: Request):
+    # Main JSON-RPC-like endpoint for tool actions
     try:
         req = await request.json()
         add_log_entry("INFO", f"Incoming MCP request: {req.get('method', 'unknown')}", {"request": req})
@@ -160,55 +316,90 @@ async def mcp_endpoint(request: Request):
         params = req.get("params", {})
         id_ = req.get("id")
 
+        logger.info(f"Method: {method}, Params: {params}")
+
         result = None
         if method == "tool_action_wrapper":
+            # Route by task name in params
             task = params.get("task")
-            tool = params.get("tool_name")
-            version = params.get("version", "latest")
-
             handler = task_handlers.get(task)
+            
             if handler:
-                # uninstall_tool expects only tool param, others also get version
-                if task == "uninstall":
+                if task == "system_config":
+                    # Map common system config fields
+                    tool = params.get("tool_name")
+                    action = params.get("action", "check")
+                    value = params.get("value", None)
+                    result = handler(tool, action, value)
+                elif task == "uninstall":
+                    tool = params.get("tool_name")
                     result = handler(tool)
-                elif method == "generate_code":
-                    description = params.get("description")
-                    result = generate_code(description)
+                elif task == "install_vscode_extension":
+                    # Support both 'extension_id' and 'tool_name'
+                    extension_id = params.get("extension_id") or params.get("tool_name")
+                    result = handler(extension_id)
+                elif task == "uninstall_vscode_extension":
+                    # Support both 'extension_id' and 'tool_name'
+                    extension_id = params.get("extension_id") or params.get("tool_name")
+                    result = handler(extension_id)
+                elif task == "git_setup":
+                    # Pass-through git setup args
+                    action = params.get("action")
+                    repo_url = params.get("repo_url", "")
+                    branch = params.get("branch", "")
+                    username = params.get("username", "")
+                    email = params.get("email", "")
+                    dest_dir = params.get("dest_dir", "")
+                    pat = params.get("pat", "")
+                    result = handler(action, repo_url, branch, username, email, dest_dir, pat)
                 else:
+                    # Default handlers expect (tool, version)
+                    tool = params.get("tool_name")
+                    version = params.get("version", "latest")
                     result = handler(tool, version)
             else:
                 result = {"status": "error", "message": f"Unknown task: {task}"}
 
         elif method == "generate_code":
+            # Code generation endpoint
             description = params.get("description")
             result = generate_code(description)
 
         elif method == "info://server":
+            # Lightweight server info
             result = get_system_info()
 
         elif method == "get_logs":
+            # Return last N server logs
             lines = params.get("lines", 50)
             result = {"logs": get_server_logs(lines)}
+            
+        elif method == "install_vscode_extension":
+            # Direct extension install
+            extension_id = params.get("extension_id") or params.get("tool_name")
+            result = install_vscode_extension(extension_id)
+            
+        elif method == "uninstall_vscode_extension":
+            # Direct extension uninstall
+            extension_id = params.get("extension_id") or params.get("tool_name")
+            result = uninstall_vscode_extension(extension_id)
 
         else:
+            # Unknown method guard
             result = {"status": "error", "message": f"Unknown method: {method}"}
 
         add_log_entry("INFO", f"MCP response for {method}: {result.get('status', 'success')}")
         return JSONResponse(
-            content={
-                "jsonrpc": "2.0",
-                "id": id_,
-                "result": result
-            },
+            content=result,
             media_type="application/json"
         )
     except Exception as e:
-        # Log the full traceback for debugging
+        # Log full traceback for diagnostics
         error_msg = f"Exception in mcp_endpoint: {e}"
         add_log_entry("ERROR", error_msg, {"traceback": traceback.format_exc()})
         logger.error(f"Exception in mcp_endpoint: {e}\n{traceback.format_exc()}")
 
-        # Return a JSON error response
+        # Standardized error payload
         return JSONResponse(
             status_code=500,
             content={
@@ -224,6 +415,7 @@ async def mcp_endpoint(request: Request):
 
 def main():
     """Main entry point for the MCP server."""
+    # CLI args for host/port; uvicorn reload False (manual restart after code changes)
     import argparse
     parser = argparse.ArgumentParser(description="Start the MCP server")
     parser.add_argument("--host", default="localhost", help="Host to bind to")
