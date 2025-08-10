@@ -5,6 +5,7 @@ import shutil
 import logging
 from urllib.parse import urlparse
 import requests
+import stat
 
 # Setup logging
 logging.basicConfig(
@@ -178,6 +179,44 @@ def is_ssh_url(url: str) -> bool:
     return url.startswith("git@github.com:")
 
 
+def _ensure_ssh_dir() -> str:
+    d = os.path.expanduser("~/.ssh")
+    os.makedirs(d, exist_ok=True)
+    try:
+        os.chmod(d, 0o700)
+    except Exception:
+        pass
+    return d
+
+def ensure_known_host(host: str = "github.com", port: int = 22):
+    """
+    Pre-seed GitHub host key to avoid interactive prompt.
+    """
+    _ensure_ssh_dir()
+    kh = os.path.expanduser("~/.ssh/known_hosts")
+    # If already present, skip
+    try:
+        if os.path.exists(kh):
+            with open(kh, "r", encoding="utf-8", errors="ignore") as f:
+                if any(host in line for line in f):
+                    return
+        cmd = ["ssh-keyscan", "-H"]
+        if port and port != 22:
+            cmd += ["-p", str(port)]
+        cmd += [host]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        if r.returncode == 0 and r.stdout:
+            with open(kh, "a", encoding="utf-8") as f:
+                f.write(r.stdout)
+            try:
+                os.chmod(kh, 0o600)
+            except Exception:
+                pass
+        else:
+            logging.warning(f"ssh-keyscan failed for {host}: {r.stderr or r.stdout}")
+    except Exception as e:
+        logging.warning(f"Could not preseed known_hosts for {host}: {e}")
+
 def clone_repository_ssh(repo_url: str, dest_dir: str = None, branch: str = None):
     """
     Clone a GitHub repository using SSH.
@@ -200,6 +239,7 @@ def clone_repository_ssh(repo_url: str, dest_dir: str = None, branch: str = None
         raise RuntimeError("SSH key not found. Please generate your SSH key before cloning.")
 
     # Check SSH authentication
+    ensure_known_host("github.com")
     auth_result = check_ssh_key_auth()
     if auth_result["status"] != "success":
         logging.error(f"SSH authentication failed: {auth_result['message']}")
@@ -221,7 +261,10 @@ def clone_repository_ssh(repo_url: str, dest_dir: str = None, branch: str = None
         cmd.append(dest_dir)
     try:
         logging.info(f"Cloning repository {repo_url} ...")
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        env = os.environ.copy()
+        # Non-interactive SSH; accept new GitHub host key automatically
+        env["GIT_SSH_COMMAND"] = "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
+        subprocess.run(cmd, check=True, capture_output=True, text=True, env=env)
         logging.info(f"Repository cloned to {dest_dir or 'current directory'}.")
         return f"Repository cloned to {dest_dir or 'current directory'}"
     except subprocess.CalledProcessError as e:
@@ -352,9 +395,10 @@ def check_ssh_key_auth() -> dict:
     if not os.path.exists(key_path) or not os.path.exists(pub_key_path):
         return {"status": "error", "message": "SSH key not found. Please generate your SSH key first."}
     try:
+        ensure_known_host("github.com")
         result = subprocess.run(
-            ["ssh", "-T", "git@github.com"],
-            capture_output=True, text=True, check=False 
+            ["ssh", "-T", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "git@github.com"],
+            capture_output=True, text=True, check=False
         )
         output = (result.stdout + result.stderr).lower()
         # Treat "successfully authenticated" or "does not provide shell access" as success
