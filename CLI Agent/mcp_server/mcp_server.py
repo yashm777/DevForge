@@ -1,4 +1,5 @@
 # --- File: mcpserver.py ---
+# FastAPI MCP server: routes tool actions to platform-specific handlers
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import uvicorn
@@ -6,7 +7,6 @@ import platform
 import os
 import subprocess
 import logging
-import time
 from datetime import datetime
 from collections import deque
 from tools.code_generator import generate_code
@@ -33,11 +33,11 @@ else:
 
 import traceback
 
-# Configure logging
+# Configure logging (INFO by default)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# In-memory log storage
+# In-memory log storage (ring buffer)
 server_logs = deque(maxlen=1000)  # Keep last 1000 log entries
 
 def _status_of(result, default: str = "unknown") -> str:
@@ -47,7 +47,7 @@ def _status_of(result, default: str = "unknown") -> str:
     return default
     
 def add_log_entry(level: str, message: str, details: dict = None):
-    """Add a log entry to the in-memory log storage"""
+    """Store a structured log entry and print to console."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     log_entry = {
         "timestamp": timestamp,
@@ -63,6 +63,7 @@ app = FastAPI()
 
 # --- Dispatcher Functions ---
 def install_tool(tool, version="latest"):
+    # OS-aware installer; resolves names on Windows to improve matching
     add_log_entry("INFO", f"Install request for tool: {tool} (version: {version})")
     os_type = platform.system().lower()
     
@@ -86,6 +87,7 @@ def install_tool(tool, version="latest"):
 
 def install_tool_by_id(package_id, version="latest"):
     """Install a specific package by its ID"""
+    # Direct ID-based install (primarily Windows)
     add_log_entry("INFO", f"Install by ID request for package: {package_id} (version: {version})")
     os_type = platform.system().lower()
     if os_type == "windows":
@@ -101,6 +103,7 @@ def install_tool_by_id(package_id, version="latest"):
     return result
 
 def uninstall_tool(tool):
+    # OS-aware uninstaller
     add_log_entry("INFO", f"Uninstall request for tool: {tool}")
     os_type = platform.system().lower()
     if os_type == "windows":
@@ -117,6 +120,7 @@ def uninstall_tool(tool):
 
 def install_vscode_extension(extension_id):
     """Install a VSCode extension."""
+    # Uses platform-appropriate installer module
     add_log_entry("INFO", f"VSCode extension install request for: {extension_id}")
     result = install_vscode_extension_tool(extension_id)
     add_log_entry("INFO", f"VSCode extension install result for {extension_id}: {result.get('status', 'unknown')}")
@@ -124,12 +128,14 @@ def install_vscode_extension(extension_id):
 
 def uninstall_vscode_extension(extension_id):
     """Uninstall a VSCode extension."""
+    # Uses platform-appropriate uninstaller module
     add_log_entry("INFO", f"VSCode extension uninstall request for: {extension_id}")
     result = uninstall_vscode_extension_tool(extension_id)
     add_log_entry("INFO", f"VSCode extension uninstall result for {extension_id}: {result.get('status', 'unknown')}")
     return result
 
 def check_version(tool, version="latest"):
+    # OS-aware version checker
     add_log_entry("INFO", f"Version check request for tool: {tool}")
     os_type = platform.system().lower()
     if os_type == "windows":
@@ -145,6 +151,7 @@ def check_version(tool, version="latest"):
     return result
 
 def upgrade_tool(tool, version="latest"):
+    # OS-aware upgrade/handler
     add_log_entry("INFO", f"Upgrade request for tool: {tool} (version: {version})")
     os_type = platform.system().lower()
     if os_type == "windows":
@@ -160,6 +167,7 @@ def upgrade_tool(tool, version="latest"):
     return result
 
 def get_system_info():
+    # Basic server/system diagnostics
     add_log_entry("INFO", "System info request")
     result = {
         "os_type": platform.system(),
@@ -178,12 +186,9 @@ def get_server_logs(lines: int = 50):
 
 def handle_system_config(tool, action="check", value=None, signal_name=None):
     """
-    system_config actions:
-      - check/set/remove_env/list_env
-      - append_to_path/remove_from_path
-      - is_port_open/is_service_running
-      - get_processes_on_port: tool -> port (int as str)
+    System configuration utilities (env, PATH, ports, services).
     """
+    # Import OS-specific module at call time
     os_type = platform.system().lower()
     if os_type == "windows":
         from tools.system_config import windows as sys_tool
@@ -194,6 +199,7 @@ def handle_system_config(tool, action="check", value=None, signal_name=None):
     else:
         return {"status": "error", "message": f"System config tools not implemented for {os_type}"}
 
+    # Action routing (exact match)
     if action == "check":
         return sys_tool.check_env_variable(tool)
     elif action == "set":
@@ -203,6 +209,7 @@ def handle_system_config(tool, action="check", value=None, signal_name=None):
     elif action == "remove_from_path":
         return sys_tool.remove_from_path(tool)
     elif action == "is_port_open":
+        # tool carries port as string; cast to int
         try:
             return sys_tool.is_port_open(int(tool))
         except (TypeError, ValueError):
@@ -214,7 +221,7 @@ def handle_system_config(tool, action="check", value=None, signal_name=None):
     elif action == "list_env":
         return sys_tool.list_env_variables()
     elif action == "get_processes_on_port":
-        # tool carries the port
+        # tool carries the port (string)
         try:
             port = int(tool)
         except (TypeError, ValueError):
@@ -223,11 +230,13 @@ def handle_system_config(tool, action="check", value=None, signal_name=None):
             return sys_tool.get_processes_on_port(port)
         return {"status": "error", "message": "get_processes_on_port not implemented for this OS"}
     else:
+        # Unknown action guard
         return {"status": "error", "message": f"Unknown system_config action: {action}"}
 
 
 # Add this function to handle git_setup
 def handle_git_setup(action, repo_url="", branch="", username="", email="", dest_dir="", pat=""):
+    # Route git tasks to OS-specific configurator
     os_type = platform.system().lower()
     if os_type == "linux":
         try:
@@ -274,7 +283,7 @@ def handle_git_setup(action, repo_url="", branch="", username="", email="", dest
     else:
         return {"status": "error", "message": f"Git setup is not supported on OS: {os_type}"}
 
-# Task dispatch dictionary
+# Task dispatch dictionary (method -> handler)
 task_handlers = {
     "install": install_tool,
     "install_by_id": install_tool_by_id,
@@ -290,6 +299,7 @@ task_handlers = {
 
 @app.post("/mcp/")
 async def mcp_endpoint(request: Request):
+    # Main JSON-RPC-like endpoint for tool actions
     try:
         req = await request.json()
         add_log_entry("INFO", f"Incoming MCP request: {req.get('method', 'unknown')}", {"request": req})
@@ -302,11 +312,13 @@ async def mcp_endpoint(request: Request):
 
         result = None
         if method == "tool_action_wrapper":
+            # Route by task name in params
             task = params.get("task")
             handler = task_handlers.get(task)
             
             if handler:
                 if task == "system_config":
+                    # Map common system config fields
                     tool = params.get("tool_name")
                     action = params.get("action", "check")
                     value = params.get("value", None)
@@ -315,12 +327,15 @@ async def mcp_endpoint(request: Request):
                     tool = params.get("tool_name")
                     result = handler(tool)
                 elif task == "install_vscode_extension":
+                    # Support both 'extension_id' and 'tool_name'
                     extension_id = params.get("extension_id") or params.get("tool_name")
                     result = handler(extension_id)
                 elif task == "uninstall_vscode_extension":
+                    # Support both 'extension_id' and 'tool_name'
                     extension_id = params.get("extension_id") or params.get("tool_name")
                     result = handler(extension_id)
                 elif task == "git_setup":
+                    # Pass-through git setup args
                     action = params.get("action")
                     repo_url = params.get("repo_url", "")
                     branch = params.get("branch", "")
@@ -330,6 +345,7 @@ async def mcp_endpoint(request: Request):
                     pat = params.get("pat", "")
                     result = handler(action, repo_url, branch, username, email, dest_dir, pat)
                 else:
+                    # Default handlers expect (tool, version)
                     tool = params.get("tool_name")
                     version = params.get("version", "latest")
                     result = handler(tool, version)
@@ -337,25 +353,31 @@ async def mcp_endpoint(request: Request):
                 result = {"status": "error", "message": f"Unknown task: {task}"}
 
         elif method == "generate_code":
+            # Code generation endpoint
             description = params.get("description")
             result = generate_code(description)
 
         elif method == "info://server":
+            # Lightweight server info
             result = get_system_info()
 
         elif method == "get_logs":
+            # Return last N server logs
             lines = params.get("lines", 50)
             result = {"logs": get_server_logs(lines)}
             
         elif method == "install_vscode_extension":
+            # Direct extension install
             extension_id = params.get("extension_id") or params.get("tool_name")
             result = install_vscode_extension(extension_id)
             
         elif method == "uninstall_vscode_extension":
+            # Direct extension uninstall
             extension_id = params.get("extension_id") or params.get("tool_name")
             result = uninstall_vscode_extension(extension_id)
 
         else:
+            # Unknown method guard
             result = {"status": "error", "message": f"Unknown method: {method}"}
 
         add_log_entry("INFO", f"MCP response for {method}: {result.get('status', 'success')}")
@@ -364,12 +386,12 @@ async def mcp_endpoint(request: Request):
             media_type="application/json"
         )
     except Exception as e:
-        # Log the full traceback for debugging
+        # Log full traceback for diagnostics
         error_msg = f"Exception in mcp_endpoint: {e}"
         add_log_entry("ERROR", error_msg, {"traceback": traceback.format_exc()})
         logger.error(f"Exception in mcp_endpoint: {e}\n{traceback.format_exc()}")
 
-        # Return a JSON error response
+        # Standardized error payload
         return JSONResponse(
             status_code=500,
             content={
@@ -385,6 +407,7 @@ async def mcp_endpoint(request: Request):
 
 def main():
     """Main entry point for the MCP server."""
+    # CLI args for host/port; uvicorn reload False (manual restart after code changes)
     import argparse
     parser = argparse.ArgumentParser(description="Start the MCP server")
     parser.add_argument("--host", default="localhost", help="Host to bind to")
