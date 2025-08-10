@@ -329,6 +329,173 @@ def check_xcode_tools():
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+def _find_pids_by_port(port: int):
+    """
+    Find process IDs using a specific port on Mac.
+    
+    Args:
+        port: Port number to check
+        
+    Returns:
+        List of process IDs using the port
+    """
+    pids = []
+    
+    # Method 1: Use lsof (preferred on Mac)
+    try:
+        result = subprocess.run(
+            ["lsof", "-t", "-i", f"TCP:{port}", "-sTCP:LISTEN"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0 and result.stdout:
+            for line in result.stdout.splitlines():
+                if line.strip().isdigit():
+                    pids.append(int(line.strip()))
+    except Exception:
+        pass
+    
+    # Method 2: Use netstat as fallback (Mac-compatible)
+    if not pids:
+        try:
+            result = subprocess.run(
+                ["netstat", "-an", "-p", "tcp"], 
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0:
+                lines = result.stdout.splitlines()
+                for line in lines:
+                    if f":{port}" in line and "LISTEN" in line:
+                        # Parse netstat output to find PID
+                        parts = line.split()
+                        if len(parts) >= 7:
+                            # On Mac, PID is typically in the last column
+                            pid_part = parts[-1]
+                            if pid_part.isdigit():
+                                pids.append(int(pid_part))
+        except Exception:
+            pass
+    
+    # Method 3: Use ps and grep as last resort
+    if not pids:
+        try:
+            result = subprocess.run(
+                ["ps", "aux"], 
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0:
+                lines = result.stdout.splitlines()
+                for line in lines:
+                    if f":{port}" in line:
+                        parts = line.split()
+                        if len(parts) >= 2 and parts[1].isdigit():
+                            pids.append(int(parts[1]))
+        except Exception:
+            pass
+    
+    return sorted(set(pids))
+
+def get_processes_on_port(port: int):
+    """
+    Get detailed information about processes using a specific port on Mac.
+    
+    Args:
+        port: Port number to check
+        
+    Returns:
+        Dictionary with process information
+    """
+    try:
+        pids = _find_pids_by_port(port)
+        
+        if not pids:
+            return {
+                "status": "free",
+                "port": port,
+                "message": f"Port {port} is not in use by any processes",
+                "processes": []
+            }
+        
+        processes = []
+        
+        for pid in pids:
+            try:
+                # Get process details using ps
+                result = subprocess.run(
+                    ["ps", "-p", str(pid), "-o", "pid,ppid,user,comm,args"],
+                    capture_output=True, text=True, timeout=5
+                )
+                
+                if result.returncode == 0 and result.stdout:
+                    lines = result.stdout.splitlines()
+                    if len(lines) > 1:  # Skip header line
+                        process_line = lines[1]
+                        parts = process_line.split(None, 4)  # Split into max 5 parts
+                        
+                        if len(parts) >= 5:
+                            process_info = {
+                                "pid": int(parts[0]),
+                                "ppid": int(parts[1]) if parts[1].isdigit() else "Unknown",
+                                "user": parts[2],
+                                "command": parts[3],
+                                "full_command": parts[4] if len(parts) > 4 else parts[3]
+                            }
+                        else:
+                            process_info = {
+                                "pid": pid,
+                                "ppid": "Unknown",
+                                "user": "Unknown",
+                                "command": "Unknown",
+                                "full_command": "Unknown"
+                            }
+                        
+                        # Try to get additional info using lsof
+                        try:
+                            lsof_result = subprocess.run(
+                                ["lsof", "-p", str(pid), "-i", f"TCP:{port}"],
+                                capture_output=True, text=True, timeout=5
+                            )
+                            if lsof_result.returncode == 0 and lsof_result.stdout:
+                                lsof_lines = lsof_result.stdout.splitlines()
+                                if len(lsof_lines) > 1:  # Skip header
+                                    lsof_parts = lsof_lines[1].split()
+                                    if len(lsof_parts) >= 9:
+                                        process_info["local_address"] = lsof_parts[8]
+                                        process_info["state"] = lsof_parts[5] if len(lsof_parts) > 5 else "Unknown"
+                        except Exception:
+                            process_info["local_address"] = "Unknown"
+                            process_info["state"] = "Unknown"
+                        
+                        processes.append(process_info)
+                
+            except Exception as e:
+                # If we can't get detailed info, add basic info
+                processes.append({
+                    "pid": pid,
+                    "ppid": "Unknown",
+                    "user": "Unknown",
+                    "command": "Unknown",
+                    "full_command": "Unknown",
+                    "local_address": "Unknown",
+                    "state": "Unknown",
+                    "error": str(e)
+                })
+        
+        return {
+            "status": "in_use",
+            "port": port,
+            "message": f"Port {port} is in use by {len(processes)} process(es)",
+            "processes": processes,
+            "count": len(processes)
+        }
+        
+    except Exception as e:
+        return {
+            "status": "error",
+            "port": port,
+            "message": f"Failed to get process information for port {port}: {str(e)}",
+            "processes": []
+        }
+
 def switch_java_version(version):
     """
     Switch to a specific Java version by updating shell configuration.
