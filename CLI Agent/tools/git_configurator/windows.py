@@ -56,7 +56,14 @@ def get_public_key() -> dict:
     _, public_key = get_ssh_key_paths()
     if public_key.exists():
         with open(public_key, "r") as f:
-            return {"status": "success", "public_key": f.read()}
+            pubkey = f.read()
+        # Provide action and details.message so CLI prints the raw key
+        return {
+            "status": "success",
+            "action": "get_public_key",
+            "details": {"message": pubkey},
+            "public_key": pubkey
+        }
     else:
         return {"status": "error", "message": "Public key does not exist."}
 
