@@ -273,34 +273,26 @@ def check_version(tool_name: str, version: str = "latest") -> dict:
     alias_list = TOOL_ALIASES.get(normalized, [normalized])
     probe_names = list(dict.fromkeys(alias_list + [apt_name, snap_name, resolved.get("name", normalized)]))
 
-    # Simplified Java path: only report the active runtime (java -version)
+    # Strict Java path: run only `java --version` and report version
     if normalized == "java":
-        exe_path = find_executable("java", ["java"])
-        if exe_path:
-            v = _java_version_from_java()
-            if v:
-                return {
-                    "status": "success",
-                    "message": f"java version {v} via executable",
-                    "tool": "java",
-                    "version": v,
-                    "source": "executable",
-                    "path": exe_path,
-                }
-        # Optional minimal fallback: SDKMAN current
-        v = _sdkman_current("java")
-        if v:
+        r = _run(["java", "--version"])
+        if r.returncode == 0:
+            out = (r.stdout or "").strip()
+            # Parse the first line, e.g., "openjdk 17.0.9 2023-10-17"
+            first_line = out.splitlines()[0].strip() if out else ""
+            m = re.search(r"\b(\d{1,4}(?:\.\d+){0,3}(?:_[0-9]+)?)\b", first_line)
+            ver = m.group(1) if m else first_line or "unknown"
             return {
                 "status": "success",
-                "message": f"java version {v} via SDKMAN",
+                "message": f"java version {ver} via executable",
                 "tool": "java",
-                "version": v,
-                "source": "sdkman",
-                "path": "",
+                "version": ver,
+                "source": "executable",
+                "path": shutil.which("java") or "",
             }
         return {
             "status": "error",
-            "message": "java is not in PATH or version could not be determined."
+            "message": "java --version failed or Java is not installed."
         }
 
     # Generic path for other tools
