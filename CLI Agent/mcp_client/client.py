@@ -46,16 +46,38 @@ class HTTPMCPClient:
     
     def generate_code(self, description: str):
         result = self._make_request("generate_code", {"description": description})
-        # Handle the nested result structure
-        if "result" in result:
-            inner_result = result["result"]
-            if "code" in inner_result:
-                return inner_result["code"]
-            elif "status" in inner_result and inner_result["status"] == "error":
-                return f"[Error] {inner_result.get('message', 'Code generation failed')}"
-        elif "error" in result:
-            return f"[Error] {result['error']}"
-        return "[Error] No code returned"
+        # Accept both wrapped ({"result": {"code": ...}}) and direct ({"code": ...}) formats
+        try:
+            if not isinstance(result, dict):
+                return "[Error] Unexpected response format"
+
+            # JSON-RPC style wrapper
+            if "result" in result and isinstance(result["result"], dict):
+                inner = result["result"]
+                if "code" in inner:
+                    return inner["code"]
+                if inner.get("status") == "error":
+                    return f"[Error] {inner.get('message', 'Code generation failed')}"
+                # Fall through if no code
+
+            # Direct (current server behavior)
+            if "code" in result:
+                # If status indicates error, surface message
+                if result.get("status") == "error":
+                    return f"[Error] {result.get('message', 'Code generation failed')}"
+                return result["code"]
+
+            # Top-level error key
+            if "error" in result:
+                return f"[Error] {result['error']}"
+
+            # Status error without code
+            if result.get("status") == "error":
+                return f"[Error] {result.get('message', 'Code generation failed')}"
+
+            return "[Error] No code returned"
+        except Exception as e:
+            return f"[Error] Failed to parse code generation response: {e}"
     
     def call_jsonrpc(self, method: str, params: dict):
         return self._make_request(method, params)
