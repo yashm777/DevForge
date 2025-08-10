@@ -1,3 +1,4 @@
+# Linux version checker: probes PATH tools, then dpkg/snap/SDKMAN fallbacks.
 import os
 import re
 import shutil
@@ -13,15 +14,18 @@ logger = logging.getLogger(__name__)
 # ---------- helpers ----------
 
 def _run(cmd: List[str], timeout: int = 8) -> subprocess.CompletedProcess:
+    """Run a command with timeout; always return a CompletedProcess."""
     try:
         return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     except Exception as e:
         return subprocess.CompletedProcess(cmd, returncode=1, stdout="", stderr=str(e))
 
 def _which(name: str) -> Optional[str]:
+    """Locate an executable on PATH."""
     return shutil.which(name)
 
 def _first_nonempty(*vals: Optional[str]) -> Optional[str]:
+    """Return the first non-empty string or None."""
     for v in vals:
         if v:
             v = v.strip()
@@ -30,9 +34,11 @@ def _first_nonempty(*vals: Optional[str]) -> Optional[str]:
     return None
 
 def _strip_v(s: str) -> str:
+    """Strip a leading 'v' (e.g., v18.19.0 -> 18.19.0)."""
     return s[1:] if s and s.startswith("v") else s
 
 def _extract_semver(text: str) -> Optional[str]:
+    """Extract a semver-like version from free-form text."""
     # Prefer semver-ish first
     m = re.search(r"\b(\d+\.\d+\.\d+(?:[-+._][0-9A-Za-z.-]+)?)\b", text)
     if m:
@@ -44,6 +50,7 @@ def _extract_semver(text: str) -> Optional[str]:
     return None
 
 def _exec_version(cmd: List[str], strip_leading_v: bool = False) -> Optional[str]:
+    """Execute a version command and parse a version from its output."""
     r = _run(cmd)
     out = _first_nonempty(r.stdout, r.stderr) or ""
     if not out:
@@ -56,6 +63,7 @@ def _exec_version(cmd: List[str], strip_leading_v: bool = False) -> Optional[str
 # ---------- special parsers ----------
 
 def _java_version_from_java() -> Optional[str]:
+    """Parse 'java -version' output."""
     r = _run(["java", "-version"])
     out = _first_nonempty(r.stdout, r.stderr) or ""
     # Patterns:
@@ -67,45 +75,53 @@ def _java_version_from_java() -> Optional[str]:
     return _extract_semver(out)
 
 def _maven_version() -> Optional[str]:
+    """Parse Maven version from 'mvn -v'."""
     r = _run(["mvn", "-v"])
     out = _first_nonempty(r.stdout, r.stderr) or ""
     m = re.search(r"Apache Maven\s+([0-9][^ \n\r\t]+)", out)
     return m.group(1) if m else _extract_semver(out)
 
 def _gradle_version() -> Optional[str]:
+    """Parse Gradle version from 'gradle -v'."""
     r = _run(["gradle", "-v"])
     out = _first_nonempty(r.stdout, r.stderr) or ""
     m = re.search(r"Gradle\s+([0-9][^ \n\r\t]+)", out)
     return m.group(1) if m else _extract_semver(out)
 
 def _kubectl_version() -> Optional[str]:
+    """Parse kubectl client version."""
     r = _run(["kubectl", "version", "--client", "--short"])
     out = _first_nonempty(r.stdout, r.stderr) or ""
     m = re.search(r"Client Version:\s*v?([0-9][^ \n\r\t]+)", out)
     return m.group(1) if m else _extract_semver(out)
 
 def _terraform_version() -> Optional[str]:
+    """Parse Terraform version."""
     r = _run(["terraform", "version"])
     out = _first_nonempty(r.stdout, r.stderr) or ""
     m = re.search(r"Terraform\s+v?([0-9][^ \n\r\t]+)", out)
     return m.group(1) if m else _extract_semver(out)
 
 def _code_version() -> Optional[str]:
+    """Parse VS Code version (first line of 'code --version')."""
     r = _run(["code", "--version"])
     out = _first_nonempty(r.stdout, r.stderr) or ""
     line0 = out.splitlines()[0].strip() if out else ""
     return line0 or _extract_semver(out)
 
 def _go_version() -> Optional[str]:
+    """Parse Go version from 'go version'."""
     r = _run(["go", "version"])
     out = _first_nonempty(r.stdout, r.stderr) or ""
     m = re.search(r"go\s+version\s+go([0-9][^ \n\r\t]+)", out)
     return m.group(1) if m else _extract_semver(out)
 
 def _dotnet_version() -> Optional[str]:
+    """Parse .NET SDK version."""
     return _exec_version(["dotnet", "--version"])
 
 def _java_default_alternative_path() -> Optional[str]:
+    """Resolve the real java path (update-alternatives or which)."""
     # Resolve the real target behind /etc/alternatives/java if present
     alt = "/etc/alternatives/java"
     if os.path.exists(alt):
@@ -122,18 +138,19 @@ def _java_default_alternative_path() -> Optional[str]:
     return None
 
 def _infer_java_version_from_path(p: str) -> Optional[str]:
-    # Try to infer from common path segments
+    """Infer Java version from common directory names in path."""
     # e.g., /usr/lib/jvm/java-17-openjdk-amd64/bin/java -> 17
     m = re.search(r"/java-(\d{1,3})[-/]", p)
     if m:
         return m.group(1)
-    # e.g., /usr/lib/jvm/java-21-openjdk... or .../jdk-17.0.9/...
+    # e.g., .../jdk-17.0.9/...
     m = re.search(r"/jdk-?([0-9][0-9._-]*)/", p)
     if m:
         return m.group(1)
     return None
 
 def _java_alternatives_info() -> dict:
+    """List java alternatives and inferred versions."""
     info = {"current_path": _java_default_alternative_path(), "alternatives": []}
     r = _run(["update-alternatives", "--list", "java"])
     if r.returncode == 0:
@@ -149,6 +166,7 @@ def _java_alternatives_info() -> dict:
     return info
 
 def _dpkg_java_packages() -> list[dict]:
+    """List installed Java-related packages via dpkg."""
     if not shutil.which("dpkg"):
         return []
     r = _run(["dpkg", "-l"])
@@ -166,6 +184,7 @@ def _dpkg_java_packages() -> list[dict]:
     return pkgs
 
 def _sdkman_java_installed() -> dict:
+    """List SDKMAN Java installations and the current one."""
     out = {"installed": [], "current": None}
     home = os.path.expanduser(f"~{os.environ.get('SUDO_USER')}") if os.environ.get("SUDO_USER") else os.path.expanduser("~")
     init_path = os.path.join(home, ".sdkman", "bin", "sdkman-init.sh")
@@ -184,6 +203,7 @@ def _sdkman_java_installed() -> dict:
 # ---------- package manager fallbacks (Debian/Ubuntu focus) ----------
 
 def _dpkg_version(pkg: str) -> Optional[str]:
+    """Get package version from dpkg (installed package metadata)."""
     if not shutil.which("dpkg"):
         return None
     r = _run(["dpkg", "-s", pkg])
@@ -201,6 +221,7 @@ def _dpkg_version(pkg: str) -> Optional[str]:
     return None
 
 def _snap_version(snap_name: str) -> Optional[str]:
+    """Get version from snap list for a specific snap."""
     if not shutil.which("snap"):
         return None
     r = _run(["snap", "list", snap_name])
@@ -213,6 +234,7 @@ def _snap_version(snap_name: str) -> Optional[str]:
     return None
 
 def _sdkman_current(candidate: str) -> Optional[str]:
+    """Get current SDKMAN version for a candidate (e.g., java, maven)."""
     # Read SDKMAN current for non-root user if present
     home = os.path.expanduser(f"~{os.environ.get('SUDO_USER')}") if os.environ.get("SUDO_USER") else os.path.expanduser("~")
     init_path = os.path.join(home, ".sdkman", "bin", "sdkman-init.sh")
@@ -228,6 +250,7 @@ def _sdkman_current(candidate: str) -> Optional[str]:
 
 # ---------- main API ----------
 
+# Mapping of common aliases to probe for each tool.
 TOOL_ALIASES: Dict[str, List[str]] = {
     "python": ["python3", "python"],
     "pip": ["pip3", "pip"],
@@ -247,6 +270,7 @@ TOOL_ALIASES: Dict[str, List[str]] = {
 }
 
 def find_executable(tool_name: str, candidates: List[str]) -> Optional[str]:
+    """Return the first candidate found on PATH."""
     seen = set()
     for name in candidates:
         if not name or name in seen:
@@ -259,8 +283,14 @@ def find_executable(tool_name: str, candidates: List[str]) -> Optional[str]:
 
 def check_version(tool_name: str, version: str = "latest") -> dict:
     """
-    - success: {"status": "success", "message": "...", "tool": name, "version": "...", "source": "...", "path": "...", "details": {...}}
-    - error:   {"status": "error", "message": "...}
+    Version detection order (Linux):
+      1) Execute tool (preferred)
+      2) dpkg (Debian/Ubuntu)
+      3) snap
+      4) SDKMAN current (if candidate is known)
+    Returns:
+      - success: {"status":"success","tool":..., "version":..., "source":..., "path":...}
+      - error:   {"status":"error","message":...}
     """
     normalized = (tool_name or "").strip().lower()
     resolved = resolve_tool_name(normalized, os_type="linux", version=version, context="version_check") or {}
@@ -273,7 +303,7 @@ def check_version(tool_name: str, version: str = "latest") -> dict:
     alias_list = TOOL_ALIASES.get(normalized, [normalized])
     probe_names = list(dict.fromkeys(alias_list + [apt_name, snap_name, resolved.get("name", normalized)]))
 
-    # Treat any java/jdk-like name as Java and do only `java --version`
+    # Shortcut: Java via 'java --version' only (avoid JDK/JRE package noise)
     java_like = normalized == "java" or ("java" in normalized) or ("jdk" in normalized) or normalized in ("default-jdk", "default-jre")
     if java_like:
         r = _run(["java", "--version"])
@@ -295,7 +325,7 @@ def check_version(tool_name: str, version: str = "latest") -> dict:
             "message": "java --version failed or Java is not installed."
         }
 
-    # Generic path for other tools
+    # 1) Direct executable probe
     exe_path = find_executable(normalized, probe_names)
     detected_version = None
     tool_key = normalized
@@ -377,6 +407,7 @@ def check_version(tool_name: str, version: str = "latest") -> dict:
                 "path": exe_path or "",
             }
 
+    # Nothing found
     return {
         "status": "error",
         "message": f"{tool_name} is not installed, not in PATH, or version could not be determined."
