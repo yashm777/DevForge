@@ -51,13 +51,11 @@ def format_result(result: Dict[str, Any]) -> str:
         status = result.get("status")
         message = result.get("message", "")
         
-        # Special handling for system_config results
+        # Special handling for system_config results (env variables)
         if "variable" in result and "value" in result:
             variable = result.get("variable")
             value = result.get("value")
             source = result.get("source", "")
-            note = result.get("note", "")
-            
             if status == "success":
                 if source == "shell_profile":
                     return f"✓ {variable} = {value} (in shell profile, restart terminal to activate)"
@@ -66,9 +64,25 @@ def format_result(result: Dict[str, Any]) -> str:
             elif status == "error":
                 return f"✗ {message}" if message else "✗ Environment variable not found"
         
-        # Special handling for port checking results
+        # Special handling for port-related results
         if "port" in result:
             port = result.get("port")
+
+            # Show processes on port
+            if "processes" in result and isinstance(result.get("processes"), list):
+                processes = result.get("processes") or []
+                if status == "not_found" or not processes:
+                    return f"! No process found on port {port}"
+                # Build a concise summary (show up to 3 entries)
+                preview = []
+                for p in processes[:3]:
+                    pid = p.get("pid", "?")
+                    name = p.get("name") or p.get("exe") or ""
+                    preview.append(f"{pid}{' ' + name if name else ''}")
+                suffix = " ..." if len(processes) > 3 else ""
+                return f"✓ {len(processes)} process(es) listening on port {port}: " + ", ".join(preview) + suffix
+
+            # Fallback: simple is_port_open formatting
             if status == "success" or status == "free":
                 return f"✓ Port {port} is free"
             elif status == "in_use":

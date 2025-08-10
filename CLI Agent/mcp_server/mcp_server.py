@@ -176,7 +176,14 @@ def get_server_logs(lines: int = 50):
     """Get the last N log entries"""
     return list(server_logs)[-lines:]
 
-def handle_system_config(tool, action="check", value=None):
+def handle_system_config(tool, action="check", value=None, signal_name=None):
+    """
+    system_config actions:
+      - check/set/remove_env/list_env
+      - append_to_path/remove_from_path
+      - is_port_open/is_service_running
+      - get_processes_on_port: tool -> port (int as str)
+    """
     os_type = platform.system().lower()
     if os_type == "windows":
         from tools.system_config import windows as sys_tool
@@ -198,7 +205,7 @@ def handle_system_config(tool, action="check", value=None):
     elif action == "is_port_open":
         try:
             return sys_tool.is_port_open(int(tool))
-        except ValueError:
+        except (TypeError, ValueError):
             return {"status": "error", "message": "Port must be an integer"}
     elif action == "is_service_running":
         return sys_tool.is_service_running(tool)
@@ -206,6 +213,15 @@ def handle_system_config(tool, action="check", value=None):
         return sys_tool.remove_env_variable(tool)
     elif action == "list_env":
         return sys_tool.list_env_variables()
+    elif action == "get_processes_on_port":
+        # tool carries the port
+        try:
+            port = int(tool)
+        except (TypeError, ValueError):
+            return {"status": "error", "message": "Port must be an integer"}
+        if hasattr(sys_tool, "get_processes_on_port"):
+            return sys_tool.get_processes_on_port(port)
+        return {"status": "error", "message": "get_processes_on_port not implemented for this OS"}
     else:
         return {"status": "error", "message": f"Unknown system_config action: {action}"}
 

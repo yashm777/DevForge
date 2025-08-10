@@ -1,6 +1,8 @@
 import os
 import subprocess
 import socket
+import re
+import signal
 
 def check_env_variable(var_name):
     """Check if an environment variable is set on Linux."""
@@ -89,6 +91,153 @@ def is_service_running(service_name):
             return {"status": "running", "service": service_name}
         else:
             return {"status": "not_running", "service": service_name}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+def _find_pids_by_port(port: int):
+    """
+    Find PIDs listening on a TCP port using lsof/ss/fuser (best effort).
+    Returns a sorted list of unique PIDs.
+    """
+    pids = []
+
+    # Try lsof (preferred)
+    try:
+        r = subprocess.run(
+            ["lsof", "-t", "-i", f"TCP:{port}", "-sTCP:LISTEN", "-n", "-P"],
+            capture_output=True, text=True, timeout=5
+        )
+        if r.returncode == 0 and r.stdout:
+            for line in r.stdout.splitlines():
+                line = line.strip()
+                if line.isdigit():
+                    pids.append(int(line))
+    except Exception:
+        pass
+
+    # Try ss if none found
+    if not pids:
+        try:
+            r = subprocess.run(["ss", "-ltnp"], capture_output=True, text=True, timeout=5)
+            if r.returncode == 0 and r.stdout:
+                for line in r.stdout.splitlines():
+                    if f":{port} " in line or f":{port}\n" in line or line.strip().endswith(f":{port}"):
+                        for m in re.finditer(r"pid=(\d+)", line):
+                            pids.append(int(m.group(1)))
+        except Exception:
+            pass
+
+    # Try fuser as a last resort
+    if not pids:
+        try:
+            r = subprocess.run(["fuser", "-n", "tcp", str(port)], capture_output=True, text=True, timeout=5)
+            out = (r.stdout or "") + (r.stderr or "")
+            for tok in re.findall(r"\b(\d+)\b", out):
+                try:
+                    pids.append(int(tok))
+                except ValueError:
+                    pass
+        except Exception:
+            pass
+
+    return sorted(set(pids))
+
+
+def get_processes_on_port(port: int):
+    """
+    Show all processes listening on the given TCP port.
+    Returns:
+      - {"status":"success","port":<port>,"processes":[{"pid":..., "name":..., "cmd":...}, ...]}
+      - {"status":"not_found","port":<port>,"message":"..."} if none found
+    """
+    try:
+        port = int(port)
+        if port < 1 or port > 65535:
+            return {"status": "error", "message": "Invalid port number."}
+
+        pids = _find_pids_by_port(port)
+        if not pids:
+            return {"status": "not_found", "port": port, "message": "No process found on this port."}
+
+        processes = []
+        for pid in pids:
+            name = ""
+            cmd = ""
+            try:
+                r = subprocess.run(["ps", "-p", str(pid), "-o", "comm="], capture_output=True, text=True, timeout=3)
+                if r.returncode == 0:
+                    name = (r.stdout or "").strip()
+            except Exception:
+                pass
+            try:
+                r = subprocess.run(["ps", "-p", str(pid), "-o", "cmd="], capture_output=True, text=True, timeout=3)
+                if r.returncode == 0:
+                    cmd = (r.stdout or "").strip()
+            except Exception:
+                pass
+            processes.append({"pid": pid, "name": name, "cmd": cmd})
+
+        return {"status": "success", "port": port, "processes": processes}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+def kill_process_on_port(port: int, process_id: int = None, signal_name: str = "TERM"):
+    """
+    Kill process(es) listening on a TCP port.
+    - port (required): TCP port to target.
+    - process_id (optional): if provided, kill only this PID; otherwise kill all PIDs on the port.
+    - signal_name: TERM (default), KILL, INT, HUP.
+    Skips killing the current process unless explicitly targeted via process_id.
+    """
+    try:
+        port = int(port)
+        if port < 1 or port > 65535:
+            return {"status": "error", "message": "Invalid port number."}
+
+        pids = _find_pids_by_port(port)
+        if not pids:
+            return {"status": "not_found", "port": port, "message": "No process found on this port."}
+
+        # If a PID is specified, restrict to that PID (only if it matches the port)
+        if process_id is not None:
+            try:
+                process_id = int(process_id)
+            except ValueError:
+                return {"status": "error", "message": "Invalid process_id."}
+            if process_id not in pids:
+                return {"status": "error", "port": port, "message": f"PID {process_id} is not listening on port {port}."}
+            target_pids = [process_id]
+        else:
+            target_pids = pids
+
+        # Avoid killing the current process unless explicitly requested
+        self_pid = os.getpid()
+        if process_id is None and self_pid in target_pids:
+            target_pids = [pid for pid in target_pids if pid != self_pid]
+            if not target_pids:
+                return {"status": "warning", "port": port, "message": "Current process is listening on this port. Skipping self. Provide process_id to force."}
+
+        sigmap = {"TERM": signal.SIGTERM, "KILL": signal.SIGKILL, "INT": signal.SIGINT, "HUP": signal.SIGHUP}
+        sig = sigmap.get(signal_name.upper(), signal.SIGTERM)
+
+        killed, failed = [], []
+        for pid in target_pids:
+            try:
+                os.kill(pid, sig)
+                killed.append(pid)
+            except PermissionError:
+                failed.append({"pid": pid, "error": "permission_denied"})
+            except ProcessLookupError:
+                continue
+            except Exception as e:
+                failed.append({"pid": pid, "error": str(e)})
+
+        if killed and not failed:
+            return {"status": "success", "port": port, "killed_pids": killed, "signal": signal_name.upper()}
+        if killed and failed:
+            return {"status": "partial", "port": port, "killed_pids": killed, "failed": failed, "signal": signal_name.upper()}
+        return {"status": "error", "port": port, "message": "Failed to kill any process. Try with sudo."}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 

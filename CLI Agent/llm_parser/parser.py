@@ -55,9 +55,9 @@ AVAILABLE_TOOLS = {
     "system_config": {
         "description": "Perform system configuration tasks like checking env vars or modifying PATH",
         "params": {
-            "action": "The system_config action to perform (e.g. check, set, append_to_path, remove_from_path, is_port_open, is_service_running, remove_env, list_env)",
-            "tool_name": "The name of the variable, service, or path to act on",
-            "value": "Optional value (used with 'set')"
+            "action": "The system_config action to perform (e.g. check, set, append_to_path, remove_from_path, is_port_open, is_service_running, remove_env, list_env, get_processes_on_port)",
+            "tool_name": "The name of the variable, service, or path to act on. For get_processes_on_port, provide the TCP port as a string (e.g., '8000').",
+            "value": "Optional value (used with 'set')."
         }
     },
     "install_vscode_extension": {
@@ -137,6 +137,7 @@ def build_prompt(user_input: str) -> str:
         "- System info: {'method': 'info://server', 'params': {}}\n"
         "- Generate code: {'method': 'generate_code', 'params': {'description': 'hello world function'}}\n"
         "- System config: {'method': 'tool_action_wrapper', 'params': {'task': 'system_config', 'action': 'check', 'tool_name': 'JAVA_HOME'}}\n"
+        "- System config (show processes on port): {'method': 'tool_action_wrapper', 'params': {'task': 'system_config', 'action': 'get_processes_on_port', 'tool_name': '8000'}}\n"
         "- Git setup (clone): {'method': 'tool_action_wrapper', 'params': {'task': 'git_setup', 'action': 'clone', 'repo_url': 'git@github.com:user/repo.git', 'dest_dir': '/path/to/dir'}}\n"
         "- Git setup (generate SSH key): {'method': 'tool_action_wrapper', 'params': {'task': 'git_setup', 'action': 'generate_ssh_key', 'email': 'user@example.com'}}\n"
         f"{additional_guidance}\n\n"
