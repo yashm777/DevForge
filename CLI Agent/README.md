@@ -188,6 +188,7 @@ cli-agent run "check env JAVA_HOME"
 cli-agent run "set env FOO=bar"
 cli-agent run "list env vars"
 cli-agent run "is port 8000 open"
+cli-agent run "check service running on 8000"
 cli-agent run "is service docker running"
 ```
 
@@ -198,7 +199,7 @@ cli-agent run "is service docker running"
 cli-agent run "generate code" --output filename.py
 
 # Enable verbose output
-cli-agent run "install docker" --verbose
+cli-agent run "install slack" --verbose
 
 # Server options
 cli-agent server --host localhost --port 8000 --verbose
