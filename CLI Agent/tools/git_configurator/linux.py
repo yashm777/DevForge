@@ -132,6 +132,7 @@ def get_public_key(key_path: str = "~/.ssh/id_rsa"):
             public_key = f.read().strip()
         if not public_key:
             return f"Public key file exists but is empty: {pub_key_path}"
+        # Return the actual key contents so the CLI can display it directly
         msg = (
             f"Your SSH public key ({pub_key_path}):\n{public_key}\n\n"
             "Copy the above key and add it at: https://github.com/settings/ssh/new\n"
@@ -182,6 +183,7 @@ def add_ssh_key_to_github_or_manual(email: str, pat: str = None, key_path: str =
         pubkey = pubkey_file.read().strip()  # normalize single-line key
 
     if pat:
+        # Call GitHub API to register the key
         api_url = "https://api.github.com/user/keys"
         headers = {
             "Authorization": f"token {pat}",
@@ -259,7 +261,7 @@ def _ensure_ssh_dir() -> str:
     return d
 
 
-def ensure_known_host(host: str = "github.com", port: int = 22):
+def ensure_known_host(host: "str" = "github.com", port: int = 22):
     """
     Pre-seed known_hosts with GitHub host key to avoid interactive prompt.
     Idempotent: does nothing if an entry already exists.
@@ -267,13 +269,12 @@ def ensure_known_host(host: str = "github.com", port: int = 22):
     _ensure_ssh_dir()
     kh = os.path.expanduser("~/.ssh/known_hosts")
     try:
-        # If we already have an entry, skip
+        # Skip if we already have an entry for this host
         if os.path.exists(kh):
             with open(kh, "r", encoding="utf-8", errors="ignore") as f:
                 if any(host in line for line in f):
                     return
-
-        # Collect host key (hashed hostname with -H)
+        # Fetch host key and append to known_hosts
         cmd = ["ssh-keyscan", "-H"]
         if port and port != 22:
             cmd += ["-p", str(port)]
@@ -283,7 +284,7 @@ def ensure_known_host(host: str = "github.com", port: int = 22):
             with open(kh, "a", encoding="utf-8") as f:
                 f.write(r.stdout)
             try:
-                os.chmod(kh, 0o600)
+                os.chmod(kh, 0o600)  # secure perms for known_hosts
             except Exception:
                 pass
         else:
@@ -311,16 +312,15 @@ def clone_repository_ssh(repo_url: str, dest_dir: str = None, branch: str = None
             "Please provide a valid SSH URL."
         )
 
-    # Ensure keypair exists
+    # Ensure keypair exists before attempting clone
     key_path = os.path.expanduser("~/.ssh/id_rsa")
     pub_key_path = key_path + ".pub"
     if not os.path.exists(key_path) or not os.path.exists(pub_key_path):
         logging.error("SSH key not found. Please generate your SSH key first.")
         raise RuntimeError("SSH key not found. Please generate your SSH key before cloning.")
 
-    # Pre-seed host key and verify auth in BatchMode (non-interactive)
-    ensure_known_host("github.com")
-    auth_result = check_ssh_key_auth()
+    ensure_known_host("github.com")  # avoid host key prompt
+    auth_result = check_ssh_key_auth()  # verify access non-interactively
     if auth_result["status"] != "success":
         logging.error(f"SSH authentication failed: {auth_result['message']}")
         manual_msg = (
@@ -335,7 +335,7 @@ def clone_repository_ssh(repo_url: str, dest_dir: str = None, branch: str = None
             f"SSH key is not authorized with GitHub. {auth_result['message']}\n{manual_msg}"
         )
 
-    # Build git clone command
+    # Build git clone command (dest_dir optional)
     cmd = ["git", "clone", repo_url]
     if dest_dir:
         cmd.append(dest_dir)
@@ -380,6 +380,7 @@ def perform_git_setup(
         return {"status": "error", "message": "Git is not installed on this system."}
 
     try:
+        # Dispatch by action and normalize the response shape
         if action == "generate_ssh_key":
             if not email:
                 return {"status": "error", "message": "Email is required to generate SSH key."}
@@ -389,6 +390,7 @@ def perform_git_setup(
             return result
 
         elif action == "get_public_key":
+            # Return a message that includes the key content for direct display
             msg = get_public_key()
             return {"status": "success", "action": action, "message": msg}
 
@@ -414,7 +416,7 @@ def perform_git_setup(
                     status = "warning"
                 return {"status": status, "action": action, "details": {"message": result_msg}}
             else:
-                # No PAT → return manual instructions in the response (no prints)
+                # No PAT → return manual instructions in the response
                 manual_msg = (
                     "Personal Access Token was not provided. Manual steps to add your SSH key to GitHub:\n"
                     "1. Run the following command to display your public key:\n"
@@ -459,6 +461,7 @@ def add_ssh_key_to_github(pubkey: str, pat: str) -> str:
     }
     response = requests.post(api_url, headers=headers, json=data)
 
+    # Map common response codes to readable messages
     if response.status_code == 201:
         return "✅ SSH key added to your GitHub account via API."
     elif response.status_code == 422:
@@ -523,19 +526,18 @@ def check_ssh_key_auth() -> dict:
         return {"status": "error", "message": "SSH key not found. Please generate your SSH key first."}
 
     try:
-        # Pre-seed known_hosts and attempt a test handshake with GitHub
-        ensure_known_host("github.com")
+        ensure_known_host("github.com")  # avoid prompt for host key
         result = subprocess.run(
             ["ssh", "-T", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "git@github.com"],
             capture_output=True, text=True, check=False
         )
         output = (result.stdout + result.stderr).lower()
 
-        # 'successfully authenticated' and 'does not provide shell access' indicate a valid key
+        # Treat GitHub's standard success messages as authenticated
         if "successfully authenticated" in output or "does not provide shell access" in output or "hi " in output:
             return {"status": "success", "message": "SSH key is correctly configured and connected to GitHub!"}
         else:
-            # Return remote response as a warning for further diagnosis
+            # Return remote response to help diagnose issues
             return {"status": "warning", "message": result.stdout.strip() or result.stderr.strip()}
     except Exception as e:
         return {"status": "error", "message": str(e)}

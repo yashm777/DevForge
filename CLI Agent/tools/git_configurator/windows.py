@@ -6,25 +6,27 @@ import platform
 import logging
 import requests
 
-# Check if Git is installed on the system
+# Git setup helpers for Windows: key gen, show public key, SSH check, clone, add key to GitHub.
+
 def is_git_installed() -> bool:
+    # Check if git.exe is on PATH
     return shutil.which("git") is not None
 
-# Check if SSH and ssh-keygen are installed
 def is_ssh_installed() -> bool:
+    # Check if OpenSSH tools (ssh, ssh-keygen) are on PATH
     return shutil.which("ssh") is not None and shutil.which("ssh-keygen") is not None
 
-# Get the .ssh directory path in the user's home directory
 def get_ssh_dir() -> Path:
+    # User's ~/.ssh directory
     return Path.home() / ".ssh"
 
-# Get the paths for the private and public SSH key files
 def get_ssh_key_paths() -> tuple[Path, Path]:
+    # Default RSA key pair paths (id_rsa, id_rsa.pub)
     ssh_dir = get_ssh_dir()
     return ssh_dir / "id_rsa", ssh_dir / "id_rsa.pub"
 
-# Generate a new SSH key if it doesn't already exist
 def generate_ssh_key(email: str) -> dict:
+    # Create RSA 4096 key if not already present
     private_key, public_key = get_ssh_key_paths()
     ssh_dir = get_ssh_dir()
 
@@ -51,24 +53,23 @@ def generate_ssh_key(email: str) -> dict:
     except Exception as e:
         return {"status": "error", "message": f"Failed to generate SSH key: {e}"}
 
-# Retrieve the public SSH key if it exists
 def get_public_key() -> dict:
+    # Return the public key; also put it in details.message so CLI prints the raw key text
     _, public_key = get_ssh_key_paths()
     if public_key.exists():
         with open(public_key, "r") as f:
             pubkey = f.read()
-        # Provide action and details.message so CLI prints the raw key
         return {
             "status": "success",
             "action": "get_public_key",
-            "details": {"message": pubkey},
+            "details": {"message": pubkey},  # CLI reads and prints this directly
             "public_key": pubkey
         }
     else:
         return {"status": "error", "message": "Public key does not exist."}
 
-# Check SSH connection to GitHub
 def check_ssh_connection() -> dict:
+    # Quick ssh -T test to GitHub (non-interactive)
     try:
         result = subprocess.run(["ssh", "-T", "git@github.com"], capture_output=True, text=True, timeout=15)
         if "successfully authenticated" in result.stdout or "You've successfully authenticated" in result.stdout:
@@ -80,8 +81,8 @@ def check_ssh_connection() -> dict:
     except Exception as e:
         return {"status": "error", "message": f"SSH connection check failed: {e}"}
 
-# Clone a repository to the specified directory
 def clone_repository(repo_url: str, target_dir: str = ".") -> dict:
+    # git clone <repo_url> into target_dir
     target_path = Path(target_dir).expanduser().resolve()
     try:
         subprocess.run(["git", "clone", repo_url], cwd=target_path, check=True, capture_output=True, text=True)
@@ -97,27 +98,20 @@ def clone_repository(repo_url: str, target_dir: str = ".") -> dict:
             )
         }
 
-# Add SSH public key to GitHub using the API and a Personal Access Token (PAT)
 def add_ssh_key_to_github(pubkey: str, pat: str) -> str:
-    """
-    Add SSH public key to GitHub using the API and a Personal Access Token (PAT).
-    """
+    # POST /user/keys with PAT to add the public key to GitHub
     api_url = "https://api.github.com/user/keys"
     headers = {
         "Authorization": f"token {pat}",
         "Accept": "application/vnd.github+json"
     }
-    data = {
-        "title": "DevForge CLI Key",
-        "key": pubkey
-    }
+    data = {"title": "DevForge CLI Key", "key": pubkey}
     response = requests.post(api_url, headers=headers, json=data)
     if response.status_code == 201:
         return "✅ SSH key added to your GitHub account via API."
     else:
         return f"❌ Failed to add SSH key via API: {response.text}"
 
-# Main entry point for performing git-related setup actions on Windows
 def perform_git_setup(
     action: str,
     email: str = "",
@@ -127,18 +121,17 @@ def perform_git_setup(
     dest_dir: str = ".",
     pat: str = ""
 ) -> dict:
-    # Ensure this script is only run on Windows
+    # Windows-only dispatcher for git setup tasks
     if platform.system() != "Windows":
         return {"status": "error", "message": "This script is intended for Windows systems."}
 
-    # Check for required tools
+    # Pre-flight checks
     if not is_git_installed():
         return {"status": "error", "message": "Git is not installed. Please install Git for Windows and try again."}
-
     if not is_ssh_installed():
         return {"status": "error", "message": "ssh or ssh-keygen not found. Make sure Git Bash or OpenSSH is available."}
 
-    # Handle each supported action
+    # Route actions
     if action == "generate_ssh_key":
         if not email or "@" not in email:
             return {"status": "error", "message": "A valid email is required to generate SSH key."}
@@ -156,18 +149,16 @@ def perform_git_setup(
         return clone_repository(repo_url, dest_dir)
 
     elif action == "add_ssh_key":
-        # Find public key
+        # Read local public key and optionally add to GitHub via PAT
         _, public_key_path = get_ssh_key_paths()
         if not public_key_path.exists():
             return {"status": "error", "message": "SSH public key not found. Please generate it first."}
         with open(public_key_path, "r") as pubkey_file:
             pubkey = pubkey_file.read()
         if pat:
-            # Add key to GitHub via API if PAT is provided
             result = add_ssh_key_to_github(pubkey, pat)
             return {"status": "success", "action": action, "details": {"message": result}}
         else:
-            # Manual instructions for adding SSH key, with explicit PAT message
             manual_msg = (
                 "You did not provide a GitHub Personal Access Token (PAT), so the key cannot be added automatically.\n"
                 "Here are the manual steps to add your SSH key to GitHub:\n"
@@ -183,6 +174,6 @@ def perform_git_setup(
     else:
         return {"status": "error", "message": f"Unsupported action: {action}"}
 
-# Example usage for automation:
+# Example:
 # result = perform_git_setup(action="generate_ssh_key", email="your_email@example.com")
 # print(result)
