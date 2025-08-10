@@ -77,7 +77,7 @@ export OPENAI_API_KEY="your-api-key-here"
 $env:OPENAI_API_KEY = "API_KEY"
 ```
 
-### 4. Use the Agent
+### 3. Use the Agent
 ```bash
 # Try some commands
 
@@ -94,7 +94,7 @@ uv run cli-agent run "audacity version"
 uv run cli-agent run "generate code for a hello world flask app"
 ```
 
-### 5. (Optional) View Live Server Logs
+### 4. (Optional) View Live Server Logs
 ```bash
 # Show last 100 lines
 cli-agent logs -n 100
@@ -443,6 +443,7 @@ The MCP server runs on `localhost:8000` by default and includes:
 
 ---
 Happy building! If something feels missing, run `cli-agent logs` to inspect what's happening under the hood.
+
 
 
 
