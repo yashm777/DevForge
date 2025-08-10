@@ -219,7 +219,7 @@ cli-agent run "show my ssh key"
 cli-agent run "add my ssh key to github"
 
 # Clone repository (SSH URL recommended)
-cli-agent run "clone repo git@github.com:owner/repo.git into repos"
+cli-agent run "clone repo git@github.com:owner/repo.git"
 
 # Check SSH connectivity to GitHub
 cli-agent run "check ssh auth"
