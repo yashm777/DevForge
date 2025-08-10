@@ -52,10 +52,11 @@ class MacToolManager:
     }
     
     # System Python paths (bypass virtual environments)
+    # Prioritize Homebrew Python over macOS system Python
     SYSTEM_PYTHON_PATHS = [
-        '/usr/bin/python3',
-        '/usr/local/bin/python3', 
-        '/opt/homebrew/bin/python3',
+        '/opt/homebrew/bin/python3',     # Homebrew Python (preferred)
+        '/usr/local/bin/python3',        # Legacy Homebrew location
+        '/usr/bin/python3',              # macOS system Python (fallback)
         '/System/Library/Frameworks/Python.framework/Versions/Current/bin/python3',
     ]
     
@@ -363,19 +364,35 @@ class MacToolManager:
         """
         Get the installed version of a Homebrew package directly from brew list.
         This is more reliable for versioned packages like openjdk@17.
+        Also handles cask packages (GUI applications).
         """
         try:
+            # First try as a regular formula
             result = subprocess.run(
                 ["brew", "list", "--versions", package_name],
                 capture_output=True,
                 text=True,
-                timeout=10
+                timeout=30
             )
             if result.returncode == 0 and result.stdout.strip():
                 # Output format: "package_name version"
                 parts = result.stdout.strip().split()
                 if len(parts) >= 2:
                     return parts[1]  # Return the version part
+            
+            # If not found as formula, try as cask
+            result = subprocess.run(
+                ["brew", "list", "--cask", "--versions", package_name],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                # Output format: "package_name version"
+                parts = result.stdout.strip().split()
+                if len(parts) >= 2:
+                    return parts[1]  # Return the version part
+                    
         except Exception as e:
             logger.debug(f"Could not get Homebrew version for {package_name}: {e}")
         return "unknown"
@@ -386,13 +403,62 @@ class MacToolManager:
         For Python, implements smart logic to find the highest system version.
         """
         try:
+            # First classify the package
+            package_type = self.classify_package(tool_name)
+            
+            # For GUI applications (casks), use Homebrew to get version info
+            if package_type == "app":
+                homebrew_version = self.get_homebrew_package_version(tool_name)
+                if homebrew_version != "unknown":
+                    return {
+                        "found": True,
+                        "version": homebrew_version,
+                        "raw_output": f"Version {homebrew_version} (GUI application)",
+                        "source": "homebrew_cask"
+                    }
+                else:
+                    return {"found": False}
+            
             # Special handling for Python - try multiple versions and return the highest
             if tool_name.lower() in ['python', 'python3', 'py']:
                 return self._check_python_version_smart(tool_name)
             
+            # Special handling for Java - try multiple Java paths
+            if tool_name.lower() == 'java':
+                # Try multiple Java paths
+                java_paths = [
+                    "java",  # In PATH
+                    "/opt/homebrew/opt/openjdk/bin/java",  # Latest Homebrew Java
+                    "/opt/homebrew/opt/openjdk@17/bin/java",  # Java 17
+                    "/opt/homebrew/opt/openjdk@21/bin/java",  # Java 21
+                    "/usr/bin/java"  # System Java
+                ]
+                
+                for java_path in java_paths:
+                    try:
+                        result = subprocess.run(
+                            [java_path, "-version"],
+                            capture_output=True,
+                            text=True,
+                            timeout=30
+                        )
+                        if result.returncode == 0:
+                            output = result.stderr.strip() or result.stdout.strip()
+                            if output:
+                                version = self._extract_version_from_output(output)
+                                return {
+                                    "found": True,
+                                    "version": version,
+                                    "raw_output": output,
+                                    "java_path_used": java_path
+                                }
+                    except:
+                        continue
+                
+                return {"found": False}
+            
             # Standard version commands for common tools
             version_commands = {
-                "java": ["java", "-version"],
                 "node": ["node", "--version"],
                 "npm": ["npm", "--version"],
                 "docker": ["docker", "--version"],

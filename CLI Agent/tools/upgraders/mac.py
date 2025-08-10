@@ -126,8 +126,3 @@ def downgrade_mac_tool(tool_name, target_version=None):
         result["message"] = result["message"].replace("upgraded", "switched to")
     
     return result
-
-# Legacy function aliases for backwards compatibility
-def handle_tool(tool_name, version="latest"):
-    """Legacy function name - use upgrade_mac_tool instead."""
-    return upgrade_mac_tool(tool_name, version)
