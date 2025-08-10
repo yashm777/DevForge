@@ -176,7 +176,7 @@ cli-agent run "what os am i using"
 cli-agent run "generate ssh key with email dev@example.com"
 cli-agent run "show my ssh key"
 cli-agent run "check ssh auth"
-cli-agent run "clone repo git@github.com:owner/repo.git to dest_dir={path}"
+cli-agent run "clone repo git@github.com:owner/repo.git to projects"
 cli-agent run "add my ssh key to github"  # supply PAT via env (GITHUB_PAT) or prompt soon (see Git section)
 
 # VS Code extensions
@@ -189,7 +189,6 @@ cli-agent run "set env FOO=bar"
 cli-agent run "list env vars"
 cli-agent run "is port 8000 open"
 cli-agent run "is service docker running"
-cli-agent run "show which service running on 8000"
 ```
 
 ### Command Options
@@ -199,7 +198,7 @@ cli-agent run "show which service running on 8000"
 cli-agent run "generate code" --output filename.py
 
 # Enable verbose output
-cli-agent run "install slack" --verbose
+cli-agent run "install docker" --verbose
 
 # Server options
 cli-agent server --host localhost --port 8000 --verbose
