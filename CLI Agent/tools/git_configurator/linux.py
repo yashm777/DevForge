@@ -251,7 +251,7 @@ def clone_repository_ssh(repo_url: str, dest_dir: str = None, branch: str = None
         manual_msg = (
             "Manual steps to add your SSH key to GitHub:\n"
             "1. Run the following command to display your public key:\n"
-            "   cat ~/.ssh/id_rsa.pub\n"
+            "   cat ~/.ssh/id_rsa.pub or run 'show the ssh key'\n"
             "2. Copy the output.\n"
             "3. Go to https://github.com/settings/ssh/new\n"
             "4. Paste the key and save."
