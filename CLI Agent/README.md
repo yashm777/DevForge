@@ -77,18 +77,6 @@ export OPENAI_API_KEY="your-api-key-here"
 $env:OPENAI_API_KEY = "API_KEY"
 ```
 
-### 3. Start the MCP Server
-```bash
-# Option 1: If virtual environment is activated (after source .venv/bin/activate)
-cli-agent server 
-
-# Option 2: Using UV (without activating virtual environment)
-uv run cli-agent server
-
-# Option 3: Direct Python module
-python -m mcp_server.mcp_server
-```
-
 ### 4. Use the Agent
 ```bash
 # Try some commands
@@ -455,6 +443,7 @@ The MCP server runs on `localhost:8000` by default and includes:
 
 ---
 Happy building! If something feels missing, run `cli-agent logs` to inspect what's happening under the hood.
+
 
 
 
