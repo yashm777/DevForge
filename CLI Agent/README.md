@@ -95,13 +95,13 @@ python -m mcp_server.mcp_server
 
 # Option A: If virtual environment is activated
 cli-agent run "sys info"
-cli-agent run "install docker"
+cli-agent run "install slack"
 cli-agent run "audacity version"
 cli-agent run "generate code for a hello world flask app"
 
 # Option B: Using UV (without activating virtual environment)
 uv run cli-agent run "sys info"
-uv run cli-agent run "install docker"
+uv run cli-agent run "install slack"
 uv run cli-agent run "audacity version"
 uv run cli-agent run "generate code for a hello world flask app"
 ```
@@ -147,7 +147,7 @@ uv run cli-agent run "your command"
 
 ```bash
 # Install tools
-cli-agent run "install docker"
+cli-agent run "install slack"
 cli-agent run "get nodejs" 
 cli-agent run "setup python"
 
@@ -157,11 +157,11 @@ cli-agent run "python version"
 cli-agent run "what version is nodejs"
 
 # Update tools
-cli-agent run "update docker"
+cli-agent run "update slack"
 cli-agent run "upgrade nodejs"
 
 # Uninstall tools
-cli-agent run "remove docker"
+cli-agent run "remove slack"
 cli-agent run "uninstall nodejs"
 
 # Generate code
@@ -189,7 +189,7 @@ cli-agent run "set env FOO=bar"
 cli-agent run "list env vars"
 cli-agent run "is port 8000 open"
 cli-agent run "check service running on 8000"
-cli-agent run "is service docker running"
+cli-agent run "is service slack running"
 ```
 
 ### Command Options
