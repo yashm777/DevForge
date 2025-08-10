@@ -120,6 +120,27 @@ def get_public_key(key_path: str = "~/.ssh/id_rsa"):
         return f"Error reading public key: {e}"
 
 
+def _is_github_duplicate_key_response(payload: dict) -> bool:
+    """
+    Detect 'key already exists/in use' from GitHub 422 payload.
+    """
+    try:
+        msg = (payload.get("message") or "").lower()
+        errors = payload.get("errors") or []
+        codes = {str(e.get("code", "")).lower() for e in errors if isinstance(e, dict)}
+        texts = " ".join([str(e.get("message", "")).lower() for e in errors if isinstance(e, dict)])
+        return (
+            "already in use" in msg or
+            "already exists" in msg or
+            "key is already in use" in msg or
+            "already in use" in texts or
+            "already exists" in texts or
+            "key_already_in_use" in codes or
+            "already_exists" in codes
+        )
+    except Exception:
+        return False
+
 def add_ssh_key_to_github_or_manual(email: str, pat: str = None, key_path: str = "~/.ssh/id_rsa"):
     """
     Add SSH public key to GitHub using the API and a Personal Access Token (PAT).
@@ -129,7 +150,7 @@ def add_ssh_key_to_github_or_manual(email: str, pat: str = None, key_path: str =
     if not os.path.exists(pub_key_path):
         return {"status": "error", "message": "SSH public key not found. Please generate it first."}
     with open(pub_key_path, "r") as pubkey_file:
-        pubkey = pubkey_file.read()
+        pubkey = pubkey_file.read().strip()  # normalize single-line key
     if pat:
         api_url = "https://api.github.com/user/keys"
         headers = {
@@ -149,13 +170,15 @@ def add_ssh_key_to_github_or_manual(email: str, pat: str = None, key_path: str =
                 payload = response.json()
             except Exception:
                 payload = {}
-            msg = (payload.get("message") or "").lower()
-            codes = {e.get("code") for e in (payload.get("errors") or []) if isinstance(e, dict)}
-            if "already" in msg or "in use" in msg or "key_already_in_use" in codes or "already_exists" in codes:
+            if _is_github_duplicate_key_response(payload):
                 return {"status": "warning", "message": "⚠️ This SSH key is already added to your GitHub account. Nothing to do."}
+            # As a safe fallback, if the key already authenticates with GitHub, treat as benign
+            auth = check_ssh_key_auth()
+            if auth.get("status") == "success":
+                return {"status": "warning", "message": "⚠️ SSH key already authorized with GitHub. Nothing to do."}
             return {"status": "error", "message": "Validation failed while adding SSH key. Please verify the key and try again."}
         elif response.status_code == 401:
-            return {"status": "error", "message": "Unauthorized. Check your PAT and required scopes (admin:public_key)."},
+            return {"status": "error", "message": "Unauthorized. Check your PAT and required scopes (admin:public_key)."}
         else:
             # Concise error without dumping raw JSON
             return {"status": "error", "message": f"Failed to add SSH key via API (HTTP {response.status_code})."}
@@ -367,7 +390,7 @@ def add_ssh_key_to_github(pubkey: str, pat: str) -> str:
     }
     data = {
         "title": "DevForge CLI Key",
-        "key": pubkey
+        "key": pubkey.strip()  # normalize single-line key
     }
     response = requests.post(api_url, headers=headers, json=data)
     if response.status_code == 201:
@@ -378,10 +401,12 @@ def add_ssh_key_to_github(pubkey: str, pat: str) -> str:
             payload = response.json()
         except Exception:
             payload = {}
-        msg = (payload.get("message") or "").lower()
-        codes = {e.get("code") for e in (payload.get("errors") or []) if isinstance(e, dict)}
-        if "already" in msg or "in use" in msg or "key_already_in_use" in codes or "already_exists" in codes:
+        if _is_github_duplicate_key_response(payload):
             return "⚠️ SSH key already exists on your GitHub account. Nothing to do."
+        # If it already authenticates, treat as benign
+        auth = check_ssh_key_auth()
+        if auth.get("status") == "success":
+            return "⚠️ SSH key already authorized with GitHub. Nothing to do."
         return "❌ Validation failed while adding SSH key."
     elif response.status_code == 401:
         return "❌ Unauthorized. Check your PAT and required scopes (admin:public_key)."
@@ -399,13 +424,15 @@ def setup_github_ssh_key(email: str, pat: str = None):
         result = add_ssh_key_to_github(pubkey, pat)
         print(result)
     else:
-        print("\nManual steps to add your SSH key to GitHub:")
-        print("1. Copy the public key below:")
-        print(pubkey)
-        print("2. Go to https://github.com/settings/ssh/new")
-        print("3. Paste the key and save.")
-        input("\nPress Enter after you have added the SSH key to your GitHub account...")
-
+        # Print concise manual steps (no interactive prompt)
+        manual_msg = (
+            "\nManual steps to add your SSH key to GitHub:\n"
+            "1. Run the following command to display your public key:\n"
+            "   cat ~/.ssh/id_rsa.pub\n"
+            "2. Go to https://github.com/settings/ssh/new\n"
+            "3. Paste the key and save.\n"
+        )
+        print(manual_msg)
 
 def check_ssh_key_auth() -> dict:
     """
