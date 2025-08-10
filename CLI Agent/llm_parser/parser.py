@@ -3,6 +3,7 @@ import json
 import sys
 import os
 import logging
+import platform
 from typing import Dict, Any, Optional, List
 from dotenv import load_dotenv
 
@@ -89,14 +90,32 @@ AVAILABLE_TOOLS = {
 }
 
 def build_prompt(user_input: str) -> str:
-    """Constructs a prompt that guides GPT to generate a valid tool call, with extended guidance."""
+    """Constructs a prompt that guides GPT to generate a valid tool call, with OS-specific guidance."""
     tool_docs = json.dumps(AVAILABLE_TOOLS, indent=2)
-
-    additional_guidance = """
-# Additional Guidelines:
-- When users provide ambiguous tool names, map them to actual package names used by Linux package managers like APT.
-- Interpret phrases like "get me X", "download X", "I need X", "install X for me" as install commands.
-- Examples of name resolution:
+    
+    # Detect the current OS
+    current_os = platform.system().lower()
+    
+    # Build OS-specific name mappings
+    if current_os == "darwin":  # macOS
+        name_mappings = """
+- Examples of name resolution (macOS/Homebrew):
+  - "java" → "openjdk"
+  - "python" → "python@3.11" (or latest stable version)
+  - "node" or "nodejs" → "node"
+  - "vscode" or "code" → "visual-studio-code"
+  - "docker" → "docker"
+  - "intellij" → "intellij-idea-ce"
+  - "pycharm" → "pycharm-ce"
+  - "eclipse" → "eclipse-java"
+  - "nvim" or "neovim" → "neovim"
+  - "spotify" → "spotify"
+  - "minikube" → "minikube"
+  - "golang" → "go"
+"""
+    else:  # Linux (default)
+        name_mappings = """
+- Examples of name resolution (Linux/APT):
   - "java" → "default-jdk"
   - "node" or "nodejs" → "nodejs"
   - "python" → "python3"
@@ -111,14 +130,24 @@ def build_prompt(user_input: str) -> str:
   - "git" → "git"
   - "maven" → "maven"
   - "gradle" → "gradle"
-- Always return the base package name commonly used on Ubuntu/Debian systems; do not include OS-specific variants.
+"""
+
+    additional_guidance = f"""
+# Additional Guidelines:
+
+- When users provide ambiguous tool names, map them to actual package names used by the current system's package managers.
+- Interpret phrases like "get me X", "download X", "I need X", "install X for me" as install commands.
+
+{name_mappings}
+
+- Always return the base package name commonly used on the current system; do not include OS-specific variants unless needed.
 - For version-specific installs, append the version number as part of the package name when specified, for example:
-  - "java 11" → "openjdk-11-jdk"
-  - "python 3.9" → "python3.9"
+  - "java 11" → "openjdk-11-jdk" (Linux) or "openjdk@11" (Mac)
+  - "python 3.9" → "python3.9" (Linux) or "python@3.9" (Mac)
 - If version is not specified or is "latest", use the default package name.
 - If the package is not available via standard package managers and appears to be a known tool, provide a field called "manual_url" with the official website for manual installation.
 - Return only a single valid JSON object with keys "method" and "params".
-- For git/SSH key retrieval, interpret phrases like "get key", "get sshkey", "get public key", "show my ssh key", "show public key", "display ssh key", etc. as a request for the public SSH key. Use method 'tool_action_wrapper' with params: {"task": "git_setup", "action": "get_public_key"}.
+- For git/SSH key retrieval, interpret phrases like "get key", "get sshkey", "get public key", "show my ssh key", "show public key", "display ssh key", etc. as a request for the public SSH key. Use method 'tool_action_wrapper' with params: {{"task": "git_setup", "action": "get_public_key"}}.
 - Do NOT include any explanations, aliases, markdown, or code blocks in the response.
 """
 
