@@ -416,7 +416,7 @@ def perform_git_setup(
             else:
                 # No PAT → return manual instructions in the response (no prints)
                 manual_msg = (
-                    "Manual steps to add your SSH key to GitHub:\n"
+                    "Personal Access Token was not provided. Manual steps to add your SSH key to GitHub:\n"
                     "1. Run the following command to display your public key:\n"
                     "   cat ~/.ssh/id_rsa.pub\n"
                     "2. Copy the output.\n"
