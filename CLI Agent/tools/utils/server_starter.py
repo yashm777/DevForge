@@ -1,10 +1,8 @@
 import subprocess
 import sys
 import time
-import threading
 from typing import Optional
 from .server_checker import is_server_running, wait_for_server
-import select
 
 def start_server_background(host: str = "localhost", port: int = 8000) -> Optional[subprocess.Popen]:
     """
@@ -22,71 +20,64 @@ def start_server_background(host: str = "localhost", port: int = 8000) -> Option
         if is_server_running(host, port):
             return None
 
-        # Start the server in background
         process = subprocess.Popen(
             [sys.executable, "-m", "mcp_server.mcp_server", "--host", host, "--port", str(port)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True,
         )
 
-        # Wait a bit for the server to start
-        time.sleep(2)
-
-        # Check if server is now running
-        if is_server_running(host, port):
+        if wait_for_server(host, port, timeout=30):
             return process
-        else:
-            # If server didn't start, try to terminate the process
-            try:
-                process.terminate()
-                process.wait(timeout=20)
-            except:
-                pass
-            return None
+
+        # Startup failed; capture diagnostics
+        try:
+            out, err = process.communicate(timeout=5)
+        except Exception:
+            out, err = b"", b"(timeout collecting process output)"
+        try:
+            process.terminate()
+        except Exception:
+            pass
+        print("MCP server failed to start (background). Stdout:\n" + out.decode(errors="ignore"))
+        print("Stderr:\n" + err.decode(errors="ignore"))
+        return None
 
     except Exception:
         return None
 
 def ensure_server_running(host: str = "localhost", port: int = 8000, timeout: int = 60):
-    """
-    Ensure the MCP server is running, starting it if necessary.
+    """Ensure the MCP server is running, starting and polling until ready.
 
-    Returns:
-        bool: True if running or started successfully, False otherwise
+    Returns True if the server responds before timeout, else False (after
+    printing diagnostics). Existing external callers remain unaffected.
     """
     try:
         if is_server_running(host, port):
             return True
 
-        # Start the server in background
         process = subprocess.Popen(
             [sys.executable, "-m", "mcp_server.mcp_server", "--host", host, "--port", str(port)],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            start_new_session=True
+            start_new_session=True,
         )
 
-        # Wait a bit for the server to start
-        time.sleep(2)
-
-        # Check if server is now running
-        if is_server_running(host, port):
+        if wait_for_server(host, port, timeout=timeout):
             return True
-        else:
-            # Try to read all output and error (blocking, but with timeout)
-            try:
-                out, err = process.communicate(timeout=5)
-            except Exception as e:
-                out, err = b"", f"Error reading process output: {e}".encode()
-            error_message = f"[MCP Server stdout]:\n{out.decode(errors='ignore')}\n[MCP Server stderr]:\n{err.decode(errors='ignore')}"
-            try:
-                process.terminate()
-                process.wait(timeout=5)
-            except Exception as e:
-                print(f"Error terminating MCP server process: {e}")
-            return False
 
+        # Collect diagnostics if not ready in time
+        try:
+            out, err = process.communicate(timeout=5)
+        except Exception:
+            out, err = b"", b"(timeout collecting process output)"
+        print("MCP server failed to become ready within timeout. Stdout:\n" + out.decode(errors="ignore"))
+        print("Stderr:\n" + err.decode(errors="ignore"))
+        try:
+            process.terminate()
+        except Exception:
+            pass
+        return False
     except Exception as e:
         print(f"Exception while starting MCP server: {e}")
         return False

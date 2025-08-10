@@ -61,6 +61,14 @@ def add_log_entry(level: str, message: str, details: dict = None):
 
 app = FastAPI()
 
+# Lightweight health endpoint used by CLI readiness checks
+@app.get("/health")
+def health():
+    """Simple fast readiness probe.
+    Returns 200 as soon as the application object is created (no heavy docs generation).
+    """
+    return {"status": "ok"}
+
 # --- Dispatcher Functions ---
 def install_tool(tool, version="latest"):
     # OS-aware installer; resolves names on Windows to improve matching
