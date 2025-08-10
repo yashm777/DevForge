@@ -120,7 +120,7 @@ def build_prompt(user_input: str) -> str:
   - "python" → "python"
   - "node" or "nodejs" → "nodejs"
   - "vscode" or "code" → "vscode"
-  - "docker" → "docker-desktop"
+  - "docker" → "Docker Desktop"
   - "intellij" → "intellijidea"
   - "pycharm" → "pycharm-community"
   - "eclipse" → "eclipse"
