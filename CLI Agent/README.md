@@ -35,7 +35,7 @@ An AI-powered development assistant with MCP (Model Context Protocol) integratio
 brew install python git
 
 # Install UV (recommended package manager)
-pip install uv
+brew install uv
 ```
 
 #### Linux (Ubuntu/Debian)
@@ -56,40 +56,45 @@ sudo apt install python3 python3-pip git
 git clone <repository-url>
 cd "DevForge CLI Agent"
 
-# Install with UV (recommended)
-pip install uv
+# Install with UV (for mac)
 uv sync && uv pip install -e .
 
-# For macOS: If you want to use direct commands (cli-agent server, cli-agent run)
+# For macOS: If you want to use direct commands (cli-agent run)
 # Activate the virtual environment:
 source .venv/bin/activate
 
-# Or install with pip
+# For windows
 pip install -r requirements.txt
 ```
 
 ### 2. Set API Key
 ```bash 
-# bash or cmd
+# bash or zshrc or cmd
 export OPENAI_API_KEY="your-api-key-here"
 
 # powershell
 $env:OPENAI_API_KEY = "API_KEY"
 ```
 
-### 3. Start the MCP Server
+### 3. Use the Agent 
+## For mac
+
+### Two Ways to Use the CLI Agent for mac
+
+**Option A: With Virtual Environment Activated**
 ```bash
-# Option 1: If virtual environment is activated (after source .venv/bin/activate)
-cli-agent server 
+# After installation, activate the virtual environment
+source .venv/bin/activate
 
-# Option 2: Using UV (without activating virtual environment)
-uv run cli-agent server
-
-# Option 3: Direct Python module
-python -m mcp_server.mcp_server
+# Now you can use direct commands
+cli-agent run "your command"
 ```
 
-### 4. Use the Agent
+**Option B: Using UV**
+```bash
+# Use UV to run commands without activating virtual environment
+uv run cli-agent run "your command"
+```
 ```bash
 # Try some commands
 
@@ -106,7 +111,7 @@ uv run cli-agent run "audacity version"
 uv run cli-agent run "generate code for a hello world flask app"
 ```
 
-### 5. (Optional) View Live Server Logs
+### 4. (Optional) View Live Server Logs
 ```bash
 # Show last 100 lines
 cli-agent logs -n 100
@@ -118,26 +123,7 @@ cli-agent logs --follow
 uv run cli-agent logs --follow
 ```
 
-## Usage Patterns
 
-### Two Ways to Use the CLI Agent
-
-**Option A: With Virtual Environment Activated**
-```bash
-# After installation, activate the virtual environment
-source .venv/bin/activate
-
-# Now you can use direct commands
-cli-agent server
-cli-agent run "your command"
-```
-
-**Option B: Using UV (Recommended)**
-```bash
-# Use UV to run commands without activating virtual environment
-uv run cli-agent server
-uv run cli-agent run "your command"
-```
 
 > **Note**: Both methods work equally well. Option A is more convenient for multiple commands in the same session, while Option B is better for one-off commands.
 
@@ -399,8 +385,8 @@ python -m cli_agent.main run "your command"
 
 **4. Import errors**
 ```bash
-# Solution: Install dependencies
-uv sync
+# Solution: Install dependencies for mac
+uv sync & uv pip install -e .
 # Or
 pip install -r requirements.txt
 ```
@@ -455,6 +441,8 @@ The MCP server runs on `localhost:8000` by default and includes:
 
 ---
 Happy building! If something feels missing, run `cli-agent logs` to inspect what's happening under the hood.
+
+
 
 
 
