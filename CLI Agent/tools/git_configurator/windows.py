@@ -25,6 +25,49 @@ def get_ssh_key_paths() -> tuple[Path, Path]:
     ssh_dir = get_ssh_dir()
     return ssh_dir / "id_rsa", ssh_dir / "id_rsa.pub"
 
+def _ensure_known_host(host: str, port: int = 22) -> None:
+    # Pre-seed known_hosts; ignore if ssh-keyscan missing
+    try:
+        if shutil.which("ssh-keyscan") is None:
+            return
+        ssh_dir = get_ssh_dir()
+        ssh_dir.mkdir(parents=True, exist_ok=True)
+        known_hosts = ssh_dir / "known_hosts"
+        cmd = ["ssh-keyscan", "-H"]
+        if port and port != 22:
+            cmd += ["-p", str(port)]
+        cmd += [host]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        if r.returncode == 0 and r.stdout:
+            with open(known_hosts, "a", encoding="utf-8") as f:
+                f.write(r.stdout)
+    except Exception:
+        pass  # best effort only
+
+def _ssh_auth(host: str, port: int) -> dict:
+    # Non-interactive auth probe for a host:port
+    try:
+        _ensure_known_host(host, port)
+        cmd = ["ssh", "-T", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new"]
+        if port and port != 22:
+            cmd += ["-p", str(port)]
+        target = f"git@{host}"
+        r = subprocess.run(cmd + [target], capture_output=True, text=True, timeout=30)
+        out = (r.stdout or "") + (r.stderr or "")
+        low = out.lower()
+        if "successfully authenticated" in low or "does not provide shell access" in low or low.startswith("hi "):
+            return {"status": "success", "message": "SSH auth OK", "host": host, "port": port}
+        if "permission denied" in low:
+            return {"status": "error", "message": out.strip(), "host": host, "port": port}
+        return {"status": "warning", "message": out.strip(), "host": host, "port": port}
+    except Exception as e:
+        return {"status": "error", "message": str(e), "host": host, "port": port}
+
+def _is_network_block(msg: str) -> bool:
+    # Detect common network blocks
+    m = (msg or "").lower()
+    return any(t in m for t in ["connection refused", "connection timed out", "timed out", "no route to host", "network is unreachable"])
+
 def generate_ssh_key(email: str) -> dict:
     # Create RSA 4096 key if not already present
     private_key, public_key = get_ssh_key_paths()
@@ -69,23 +112,55 @@ def get_public_key() -> dict:
         return {"status": "error", "message": "Public key does not exist."}
 
 def check_ssh_connection() -> dict:
-    # Quick ssh -T test to GitHub (non-interactive)
+    # Try 22, then fallback to 443 (ssh.github.com)
     try:
-        result = subprocess.run(["ssh", "-T", "git@github.com"], capture_output=True, text=True, timeout=15)
-        if "successfully authenticated" in result.stdout or "You've successfully authenticated" in result.stdout:
-            return {"status": "success", "message": "SSH connection to GitHub was successful."}
-        elif "Permission denied" in result.stderr:
-            return {"status": "error", "message": "SSH connection failed: Permission denied. Is your key added to GitHub?"}
-        else:
-            return {"status": "warning", "message": result.stderr or result.stdout}
+        res22 = _ssh_auth("github.com", 22)
+        if res22["status"] == "success":
+            return {"status": "success", "message": "SSH to GitHub OK on 22.", "host": "github.com", "port": 22}
+
+        # Fallback to 443 only on network issues
+        if _is_network_block(res22.get("message", "")):
+            res443 = _ssh_auth("ssh.github.com", 443)
+            if res443["status"] == "success":
+                return {"status": "success", "message": "SSH to GitHub OK on 443.", "host": "ssh.github.com", "port": 443}
+            return {"status": res443["status"], "message": res443.get("message", ""), "host": "ssh.github.com", "port": 443}
+
+        # Likely auth problem (key not added)
+        return {"status": res22["status"], "message": res22.get("message", ""), "host": "github.com", "port": 22}
     except Exception as e:
         return {"status": "error", "message": f"SSH connection check failed: {e}"}
 
 def clone_repository(repo_url: str, target_dir: str = ".") -> dict:
-    # git clone <repo_url> into target_dir
+    # git clone with SSH 443 fallback support (via GIT_SSH_COMMAND)
     target_path = Path(target_dir).expanduser().resolve()
+
+    # Probe auth/port to choose SSH route
+    auth = check_ssh_connection()
+    if auth.get("status") == "error":
+        # Provide manual hint when blocked
+        hint = ""
+        if _is_network_block(auth.get("message", "")):
+            hint = (
+                "\nPort 22 may be blocked. Try SSH over 443:\n"
+                "  ssh -T -p 443 git@ssh.github.com\n"
+                "Or use ~/.ssh/config:\n"
+                "  Host github.com\n"
+                "    HostName ssh.github.com\n"
+                "    Port 443\n"
+            )
+        return {"status": "error", "message": f"SSH check failed: {auth.get('message','')}{hint}"}
+
+    # Build non-interactive SSH command
+    base_ssh = "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
+    env = os.environ.copy()
+    if auth.get("port") == 443:
+        # Force github.com URL to connect via ssh.github.com:443
+        env["GIT_SSH_COMMAND"] = f"{base_ssh} -o HostName=ssh.github.com -p 443"
+    else:
+        env["GIT_SSH_COMMAND"] = base_ssh
+
     try:
-        subprocess.run(["git", "clone", repo_url], cwd=target_path, check=True, capture_output=True, text=True)
+        subprocess.run(["git", "clone", repo_url], cwd=target_path, check=True, capture_output=True, text=True, env=env)
         return {"status": "success", "message": f"Repository cloned successfully to {target_path}"}
     except subprocess.CalledProcessError as e:
         return {
