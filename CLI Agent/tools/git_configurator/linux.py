@@ -293,59 +293,97 @@ def ensure_known_host(host: "str" = "github.com", port: int = 22):
         logging.warning(f"Could not preseed known_hosts for {host}: {e}")
 
 
-def clone_repository_ssh(repo_url: str, dest_dir: str = None, branch: str = None):
-    """
-    Clone a GitHub repository using SSH.
-    - Validates SSH URL format
-    - Ensures SSH key exists and is authorized
-    - Seeds known_hosts to avoid interactive prompts
-    - Clones non-interactively (BatchMode + accept-new)
-    Note: If dest_dir is provided, Git clones into that path (parent must exist).
-    """
-    logging.info(f"Requested clone for repo: {repo_url} into {dest_dir or 'current directory'}")
+def _ssh_auth(host: str, port: int) -> dict:
+    # Single auth attempt to a host:port
+    try:
+        ensure_known_host(host, port)
+        cmd = ["ssh", "-T", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new"]
+        if port and port != 22:
+            cmd += ["-p", str(port)]
+        target = f"git@{host}"
+        r = subprocess.run(cmd + [target], capture_output=True, text=True, check=False, timeout=30)
+        out = (r.stdout + r.stderr).strip()
+        low = out.lower()
+        if "successfully authenticated" in low or "does not provide shell access" in low or low.startswith("hi "):
+            return {"status": "success", "message": "SSH auth OK", "host": host, "port": port}
+        if "permission denied" in low:
+            return {"status": "error", "message": out, "host": host, "port": port}
+        return {"status": "warning", "message": out, "host": host, "port": port}
+    except Exception as e:
+        return {"status": "error", "message": str(e), "host": host, "port": port}
 
-    # Only support SSH URLs for this function
-    if not is_ssh_url(repo_url):
-        logging.error(f"Unsupported repository URL format: {repo_url!r}")
-        raise RuntimeError(
-            "Only SSH GitHub links (git@github.com:...) are supported for cloning. "
-            "Please provide a valid SSH URL."
-        )
 
-    # Ensure keypair exists before attempting clone
+def check_ssh_key_auth() -> dict:
+    """
+    Check if the SSH key is authorized with GitHub, try 22 then fallback to 443.
+    """
     key_path = os.path.expanduser("~/.ssh/id_rsa")
     pub_key_path = key_path + ".pub"
     if not os.path.exists(key_path) or not os.path.exists(pub_key_path):
-        logging.error("SSH key not found. Please generate your SSH key first.")
+        return {"status": "error", "message": "SSH key not found. Please generate your SSH key first."}
+
+    # First try standard SSH (22)
+    res22 = _ssh_auth("github.com", 22)
+    if res22["status"] == "success":
+        return res22
+
+    # If network to 22 is blocked, try SSH over 443
+    msg = (res22.get("message") or "").lower()
+    network_block = any(tok in msg for tok in [
+        "connection refused", "connection timed out", "timed out",
+        "no route to host", "network is unreachable"
+    ])
+    if network_block:
+        res443 = _ssh_auth("ssh.github.com", 443)
+        return res443
+
+    # Otherwise return the first result (likely permission/auth issue)
+    return res22
+
+
+def clone_repository_ssh(repo_url: str, dest_dir: str = None, branch: str = None):
+    """
+    Clone via SSH with fallback to port 443 when 22 is blocked.
+    """
+    logging.info(f"Requested clone for repo: {repo_url} into {dest_dir or 'current directory'}")
+    if not is_ssh_url(repo_url):
+        logging.error(f"Unsupported repository URL format: {repo_url!r}")
+        raise RuntimeError("Only SSH GitHub links (git@github.com:...) are supported for cloning.")
+
+    key_path = os.path.expanduser("~/.ssh/id_rsa")
+    pub_key_path = key_path + ".pub"
+    if not os.path.exists(key_path) or not os.path.exists(pub_key_path):
         raise RuntimeError("SSH key not found. Please generate your SSH key before cloning.")
 
-    ensure_known_host("github.com")  # avoid host key prompt
-    auth_result = check_ssh_key_auth()  # verify access non-interactively
-    if auth_result["status"] != "success":
-        logging.error(f"SSH authentication failed: {auth_result['message']}")
+    # Auth check (tries 22 then 443)
+    auth = check_ssh_key_auth()
+    if auth["status"] != "success":
         manual_msg = (
-            "Manual steps to add your SSH key to GitHub:\n"
-            "1. Run the following command to display your public key:\n"
-            "   cat ~/.ssh/id_rsa.pub or run 'show the ssh key'\n"
-            "2. Copy the output.\n"
-            "3. Go to https://github.com/settings/ssh/new\n"
-            "4. Paste the key and save."
+            "If port 22 is blocked, try SSH over 443:\n"
+            "  ssh -T -p 443 git@ssh.github.com\n"
+            "Or add to ~/.ssh/config:\n"
+            "  Host github.com\n"
+            "    HostName ssh.github.com\n"
+            "    Port 443\n"
         )
-        raise RuntimeError(
-            f"SSH key is not authorized with GitHub. {auth_result['message']}\n{manual_msg}"
-        )
+        raise RuntimeError(f"SSH auth failed: {auth.get('message','')}\n{manual_msg}")
 
-    # Build git clone command (dest_dir optional)
+    # Build git clone command
     cmd = ["git", "clone", repo_url]
     if dest_dir:
         cmd.append(dest_dir)
-    # Branch parameter is unused here; could be honored with: ['-b', branch, '--single-branch']
+
+    env = os.environ.copy()
+    # Always non-interactive; switch to 443 host/port when needed
+    base_ssh = "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
+    if auth.get("port") == 443:
+        # Force github.com URL to connect to ssh.github.com:443
+        env["GIT_SSH_COMMAND"] = f"{base_ssh} -o HostName=ssh.github.com -p 443"
+    else:
+        env["GIT_SSH_COMMAND"] = base_ssh
 
     try:
         logging.info(f"Cloning repository {repo_url} ...")
-        env = os.environ.copy()
-        # Force non-interactive SSH; accept unknown host key on first connect
-        env["GIT_SSH_COMMAND"] = "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
         subprocess.run(cmd, check=True, capture_output=True, text=True, env=env)
         logging.info(f"Repository cloned to {dest_dir or 'current directory'}.")
         return f"Repository cloned to {dest_dir or 'current directory'}"
@@ -354,7 +392,7 @@ def clone_repository_ssh(repo_url: str, dest_dir: str = None, branch: str = None
         logging.error("GIT CLONE ERROR: %s", error_msg)
         raise RuntimeError(
             f"Failed to clone repository: {error_msg}\n"
-            "Check that your SSH key is authorized and the repository exists."
+            "Check SSH auth and that the repository exists."
         )
 
 
@@ -509,35 +547,3 @@ def setup_github_ssh_key(email: str, pat: str = None):
             "3. Paste the key and save.\n"
         )
         print(manual_msg)
-
-
-def check_ssh_key_auth() -> dict:
-    """
-    Check if the SSH key is authorized with GitHub, non-interactively.
-    Returns:
-      - {"status": "success", "message": "..."} on success
-      - {"status": "warning"/"error", "message": "..."} otherwise
-    """
-    key_path = os.path.expanduser("~/.ssh/id_rsa")
-    pub_key_path = key_path + ".pub"
-
-    # Ensure both private and public keys exist
-    if not os.path.exists(key_path) or not os.path.exists(pub_key_path):
-        return {"status": "error", "message": "SSH key not found. Please generate your SSH key first."}
-
-    try:
-        ensure_known_host("github.com")  # avoid prompt for host key
-        result = subprocess.run(
-            ["ssh", "-T", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "git@github.com"],
-            capture_output=True, text=True, check=False
-        )
-        output = (result.stdout + result.stderr).lower()
-
-        # Treat GitHub's standard success messages as authenticated
-        if "successfully authenticated" in output or "does not provide shell access" in output or "hi " in output:
-            return {"status": "success", "message": "SSH key is correctly configured and connected to GitHub!"}
-        else:
-            # Return remote response to help diagnose issues
-            return {"status": "warning", "message": result.stdout.strip() or result.stderr.strip()}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
