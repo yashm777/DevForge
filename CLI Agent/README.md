@@ -1,6 +1,6 @@
 # DevForge CLI Agent
 
-An AI-powered development assistant with MCP (Model Context Protocol) integration that allows you to manage development tools and environments using natural language commands.
+An AI-powered development assistant with MCP (Model Context Protocol) integration that lets you manage dev tools, environments, SSH/Git, VS Code extensions, and generate code using natural language. Fully supports Windows, macOS, and Linux (Debian/Ubuntu based) with platform‑aware install logic.
 
 ## Features
 
@@ -20,121 +20,147 @@ An AI-powered development assistant with MCP (Model Context Protocol) integratio
 
 ## Prerequisites
 
-- **Python 3.8+** 
-- **Git** (optional, for cloning)
-- **OpenAI API Key** (for natural language parsing)
+- **Python 3.8+** (3.11 recommended)
+- **Git** (for cloning / SSH ops)
+- **OpenAI API Key** (required for parsing + code generation)
+- **VS Code** (optional, for extension management)
 
-### Quick Prerequisites Check
+### OS-Specific Base Setup
 
 #### macOS
 ```bash
-# Install Homebrew (if not already installed)
+# Homebrew (if missing)
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-# Install Python and Git
+# Core tools
 brew install python git
 
-# Install UV (recommended package manager)
+# Recommended fast package manager for this project
 brew install uv
 ```
 
-#### Linux (Ubuntu/Debian)
+#### Linux (Debian / Ubuntu)
 ```bash
 sudo apt update
-sudo apt install python3 python3-pip git
+sudo apt install -y python3 python3-pip git curl zip unzip ca-certificates
+# (Optional) Install uv (faster env + resolver)
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 #### Windows
-1. Download Python from [python.org](https://python.org/downloads/)
-2. Download Git from [git-scm.com](https://git-scm.com/download/win)
+1. Install Python (ensure “Add python.exe to PATH” is checked) → https://python.org/downloads/
+2. Install Git → https://git-scm.com/download/win
+3. (Optional) Install winget (ships with modern Windows 11 / updated 10) – required for installs
+4. (Optional) VS Code → https://code.visualstudio.com/
+
+Check winget:
+```powershell
+winget --version
+```
+If missing, update Windows or install App Installer from Microsoft Store.
 
 ## Quick Setup
 
-### 1. Clone & Install
+### 1. Clone
 ```bash
-# Clone the repository
 git clone <repository-url>
 cd "DevForge CLI Agent"
-
-# Install with UV (for mac)
-uv sync && uv pip install -e .
-
-# For macOS: If you want to use direct commands (cli-agent run)
-# Activate the virtual environment:
-source .venv/bin/activate
-
-# For windows
-pip install -r requirements.txt
 ```
 
-### 2. Set API Key
-```bash 
-# bash or zshrc or cmd
+### 2. Install (Choose per OS)
+
+#### macOS (uv recommended)
+```bash
+uv sync
+uv pip install -e .
+# (Optional) activate venv for shorter commands
+source .venv/bin/activate
+```
+
+#### Linux (Debian/Ubuntu)
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt -e .
+# OR if uv installed
+uv pip install -e .
+```
+
+#### Windows (PowerShell)
+```powershell
+git clone <repository-url>
+cd "DevForge CLI Agent"
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install --upgrade pip
+pip install -r requirements.txt -e .
+```
+
+### 3. Set API Key
+```bash
+# bash / zsh / Linux / macOS
 export OPENAI_API_KEY="your-api-key-here"
-
-# powershell
-$env:OPENAI_API_KEY = "API_KEY"
 ```
-
-### 3. Use the Agent 
-## For mac
-
-### Two Ways to Use the CLI Agent for mac
-
-**Option A: With Virtual Environment Activated**
-```bash
-# After installation, activate the virtual environment
-source .venv/bin/activate
-
-# Now you can use direct commands
-cli-agent run "your command"
+```powershell
+$env:OPENAI_API_KEY = "your-api-key-here"
 ```
+Persist it (optional): add to ~/.zshrc, ~/.bashrc, or PowerShell profile `$PROFILE`.
 
-**Option B: Using UV**
-```bash
-# Use UV to run commands without activating virtual environment
-uv run cli-agent run "your command"
-```
-```bash
-# Try some commands
+### 4. Run Commands
 
-# Option A: If virtual environment is activated
-cli-agent run "sys info"
+#### macOS
+Option A (activated venv):
+```bash
+cli-agent run "system info"
 cli-agent run "install slack"
 cli-agent run "audacity version"
 cli-agent run "generate code for a hello world flask app"
-
-# Option B: Using UV (without activating virtual environment)
-uv run cli-agent run "sys info"
+```
+Option B (no activation, using uv):
+```bash
+uv run cli-agent run "system info"
 uv run cli-agent run "install slack"
 uv run cli-agent run "audacity version"
 uv run cli-agent run "generate code for a hello world flask app"
 ```
 
-### 4. (Optional) View Live Server Logs
+#### Linux (Ubuntu/Debian)
 ```bash
-# Show last 100 lines
+cli-agent run "system info"
+cli-agent run "install docker"
+cli-agent run "openjdk 17 version"
+cli-agent run "generate code for a fastapi hello world"
+```
+
+#### Windows (PowerShell)
+```powershell
+cli-agent run "system info"
+cli-agent run "install node"
+cli-agent run "python version"
+cli-agent run "generate code for a flask api"
+```
+
+### 5. (Optional) View Live Server Logs
+```bash
+# Last 100 lines
 cli-agent logs -n 100
-
-# Follow (tail -f style)
+# Follow (tail -f)
 cli-agent logs --follow
-
-# Using UV
+# Using uv
 uv run cli-agent logs --follow
 ```
 
-
-
-> **Note**: Both methods work equally well. Option A is more convenient for multiple commands in the same session, while Option B is better for one-off commands.
+> **Note**: Activate the virtual environment for many sequential commands; use `uv run` (mac/Linux) or just the global script when you prefer one-offs. Windows installs an entry point script into the venv / Scripts folder.
 
 ## Usage
 
 ### Basic Commands
 
 ```bash
-# Install tools
+# Install tools (OS aware)
 cli-agent run "install slack"
-cli-agent run "get nodejs" 
+cli-agent run "get nodejs"
 cli-agent run "setup python"
 
 # Check versions
@@ -192,7 +218,7 @@ cli-agent server --host localhost --port 8000 --verbose
 ```
 
 ### Git Automation Tasks (Natural Language Examples)
-All git/SSH actions route through a unified `git_setup` task:
+All git/SSH actions route through a unified `git_setup` task (auto-detects existing keys, avoids overwrites, supports GitHub upload via PAT).
 
 ```bash
 # Generate a new SSH key (id_rsa) if it does not exist
@@ -221,7 +247,7 @@ cli-agent run "uninstall vscode extension ms-python.python"
 On macOS/Linux if standard install fails (network / marketplace restrictions), a fallback download + local VSIX install is attempted (mac uses platform-specific module). Windows does not use the fallback path.
 
 ### System / Environment Management
-`system_config` task powers these natural language phrases:
+`system_config` task powers these natural language phrases (cross‑platform; service detection varies by OS — Linux uses systemctl / processes, macOS uses ps & app bundles, Windows uses service / tasklist heuristics):
 
 Actions: `check`, `set`, `remove_env`, `list_env`, `is_port_open`, `is_service_running`.
 
@@ -240,10 +266,10 @@ Return formatting:
 - Port free/in use messages
 
 ### Ambiguous Install Resolution
-When multiple Windows (winget) packages match a name (e.g., "python"), you are presented a numbered list and can enter which to install interactively.
+When multiple Windows winget packages match (e.g., "python"), you get an interactive numbered selection. On macOS the resolver maps names (e.g., openjdk 17 → openjdk@17). On Linux the resolver chooses among apt/snap/SDKMAN with fallbacks.
 
 ### Auto-Starting the MCP Server
-Any `cli-agent run` invocation will check if the MCP server is active; if not, it launches it automatically (background). You can still start it manually if preferred.
+Any `cli-agent run` or `cli-agent logs` invocation ensures the MCP server is running (auto-spawn). Manual start rarely needed.
 
 ### Viewing Server Logs
 ```bash
@@ -412,7 +438,8 @@ cli-agent run "install vscode extension ms-python.python" # Tests VS Code extens
 ## Configuration
 
 ### Environment Variables
-- `OPENAI_API_KEY`: Required for natural language parsing
+- `OPENAI_API_KEY`: Required for natural language parsing & code generation
+- `GITHUB_PAT`: (Optional) GitHub Personal Access Token to auto-upload SSH public key
 
 ### Server Configuration
 The MCP server runs on `localhost:8000` by default and includes:
@@ -424,20 +451,24 @@ The MCP server runs on `localhost:8000` by default and includes:
 - Git + system configuration task routing
 
 ## Security & Tokens
-- `OPENAI_API_KEY` is required for natural language parsing & code generation.
-- (Optional) `GITHUB_PAT` (Personal Access Token) enables automatic SSH key upload; without it you receive manual instructions.
+- `OPENAI_API_KEY` needed or parsing/code-gen will fail early.
+- `GITHUB_PAT` only used if uploading SSH key; never stored server-side.
 
 ## Tips & Best Practices
-- Use natural phrasing; the parser handles synonyms like "get me", "install", "add", "remove".
-- Prefer SSH repo URLs (`git@github.com:owner/repo.git`) for cloning after key setup.
-- For repeated commands in a session, activate the virtual environment; for one-offs, prefer `uv run`.
-- Use `--output` to persist generated code immediately.
+- Use natural phrasing; synonyms & variants handled (install/add/get me/remove).
+- Linux resolver auto-selects apt, snap, or SDKMAN with graceful fallbacks.
+- macOS uses Homebrew plus version pin logic (tool@version when supported).
+- Windows leverages winget; ambiguous results trigger interactive selection.
+- Prefer SSH URLs after generating keys; set GITHUB_PAT for auto upload.
+- Use `--output file.py` to save generated code directly.
+- Run `cli-agent logs` if behavior seems off.
 
 ## Roadmap (Ideas)
 - Batch multi-tool environment setup templates
 - Automatic rollback on failed multi-step installs
 - Parallel install execution
-- Additional package manager integrations (Chocolatey, Scoop)
+- Extra package managers (Chocolatey, Scoop, pacman, yum)
+- Local model parsing fallback
 
 ---
 Happy building! If something feels missing, run `cli-agent logs` to inspect what's happening under the hood.
